@@ -1,0 +1,222 @@
+.postishki-page {
+  max-width: 2000px;
+  margin: 0 auto;
+  padding: 28px 24px 72px;
+}
+
+.postishki-header{
+  padding-top: 64px;
+}
+
+
+
+
+.postishki-list {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.postishki-card {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  transition: border-color 180ms ease, transform 180ms ease;
+  max-height: 450px;
+}
+
+.postishki-card:hover {
+  border-color: var(--color-text-subtle);
+  transform: translateY(-3px);
+}
+
+.postishki-card-0 {
+  grid-column: span 6;
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 1fr);
+}
+
+.postishki-card-1,
+.postishki-card-2,
+.postishki-card-3,
+.postishki-card-4,
+.postishki-card-5 {
+  grid-column: span 2;
+}
+
+.postishki-card-cover {
+  display: block;
+  min-height: 190px;
+  overflow: hidden;
+  background: var(--color-surface-raised);
+  color: var(--color-text-faint);
+  text-decoration: none;
+}
+
+.postishki-card-0 .postishki-card-cover {
+  min-height: 330px;
+}
+
+.postishki-card-cover img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: inherit;
+  object-fit: cover;
+  transition: transform 400ms ease;
+}
+
+.postishki-card:hover .postishki-card-cover img {
+  transform: scale(1.035);
+}
+
+.postishki-card-no-cover {
+  display: grid;
+  min-height: inherit;
+  place-items: center;
+  color: var(--color-text-subtle);
+  font: 600 12px/1 var(--font-sans), sans-serif;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.postishki-card-content {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  padding: 18px;
+}
+
+.postishki-card-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+  color: var(--color-text-subtle);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.postishki-card-title {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--color-text);
+  font-size: 21px;
+  font-weight: 600;
+  line-height: 1.16;
+  text-decoration: none;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.postishki-card-0 .postishki-card-title {
+  font-size: 30px;
+}
+
+.postishki-card-excerpt {
+  display: -webkit-box;
+  overflow: hidden;
+  margin: 12px 0 20px;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.postishki-card-author {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: auto;
+  color: var(--color-text-light);
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.postishki-card-avatar {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  border-radius: 50%;
+  background: var(--color-avatar-bg);
+  color: var(--color-avatar-text);
+  object-fit: cover;
+}
+
+.postishki-card-avatar-fallback {
+  display: grid;
+  place-items: center;
+  font-size: 10px;
+}
+
+.post-related-link {
+  display: inline-block;
+  margin-top: 10px;
+  color: var(--color-accent);
+  font-size: 13px;
+  text-decoration: none;
+}
+
+.postishki-empty,
+.postishki-error {
+  color: var(--color-text-dim);
+}
+
+.postishki-error {
+  color: var(--color-danger);
+}
+
+@media (max-width: 800px) {
+  .postishki-page {
+    padding: 0;
+  }
+  .postishki-header{
+    padding-top: 0px;
+  }
+
+  .postishki-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .postishki-card-0,
+  .postishki-card-1,
+  .postishki-card-2,
+  .postishki-card-3,
+  .postishki-card-4,
+  .postishki-card-5 {
+    grid-column: span 1;
+  }
+
+  .postishki-card-0 {
+    display: flex;
+  }
+
+  .postishki-card-0 .postishki-card-cover {
+    min-height: 240px;
+  }
+}
+
+@media (max-width: 520px) {
+
+
+  .postishki-list {
+    grid-template-columns: 1fr;
+  }
+
+  .postishki-card-0,
+  .postishki-card-1,
+  .postishki-card-2,
+  .postishki-card-3,
+  .postishki-card-4,
+  .postishki-card-5 {
+    grid-column: span 1;
+  }
+}

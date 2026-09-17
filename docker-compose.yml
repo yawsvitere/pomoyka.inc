@@ -1,0 +1,117 @@
+name: micrococial-dev
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: feed_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-feeduser}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-feedpass}
+      POSTGRES_DB: ${POSTGRES_DB:-feeddb}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-feeduser} -d ${POSTGRES_DB:-feeddb}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: quay.io/minio/minio:latest
+    container_name: feed_minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # Web console
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  minio-init:
+    image: quay.io/minio/mc:latest
+    container_name: feed_minio_init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 ${MINIO_ROOT_USER:-minioadmin} ${MINIO_ROOT_PASSWORD:-minioadmin};
+      mc mb -p local/${MINIO_BUCKET:-feed-files} || true;
+      mc anonymous set download local/${MINIO_BUCKET:-feed-files};
+      exit 0;
+      "
+
+  imgproxy:
+    image: darthsim/imgproxy:latest
+    container_name: feed_imgproxy
+    restart: unless-stopped
+    cpus: "1.0"
+    depends_on:
+      minio:
+        condition: service_healthy
+    ports:
+      - "8081:8080"
+    environment:
+      IMGPROXY_USE_S3: "true"
+      IMGPROXY_S3_ENDPOINT: "http://minio:9000"
+      IMGPROXY_S3_REGION: ${AWS_REGION:-us-east-1}
+      IMGPROXY_S3_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
+      IMGPROXY_S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      IMGPROXY_S3_FORCE_PATH_STYLE: "true"
+      IMGPROXY_CONCURRENCY: "4"
+      IMGPROXY_MAX_SRC_RESOLUTION: "25000000"
+      IMGPROXY_KEY: ${IMGPROXY_KEY:-}
+      IMGPROXY_SALT: ${IMGPROXY_SALT:-}
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    container_name: feed_backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    ports:
+      - "5000:8080"
+    entrypoint: ["dotnet"]
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__DefaultConnection: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-feeddb};Username=${POSTGRES_USER:-feeduser};Password=${POSTGRES_PASSWORD:-feedpass}"
+      Minio__Endpoint: "minio:9000"
+      Minio__PublicEndpoint: "localhost:9000"
+      Minio__AccessKey: ${MINIO_ROOT_USER:-minioadmin}
+      Minio__SecretKey: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      Minio__Bucket: ${MINIO_BUCKET:-feed-files}
+      Minio__UseSSL: "false"
+      Jwt__Secret: ${JWT_SECRET:-CHANGE_ME_super_secret_dev_key_min_32_chars}
+      Jwt__Issuer: "FeedApi"
+      Jwt__Audience: "FeedClient"
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+    volumes:
+      - ./backend:/app
+      - backend_dotnet_bin:/app/src/Feed.Api/bin
+      - backend_dotnet_obj:/app/src/Feed.Api/obj
+      - backend_nuget:/root/.nuget/packages
+    command: dotnet watch run --project /app/src/Feed.Api/Feed.Api.csproj --urls http://+:8080
+
+volumes:
+  postgres_data:
+  minio_data:
+  backend_dotnet_bin:
+  backend_dotnet_obj:
+  backend_nuget:

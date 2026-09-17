@@ -1,0 +1,20 @@
+.fm-gallery {
+  min-height: 100vh;
+  padding: 20px;
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+.fm-gallery-empty {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  background: var(--color-bg);
+  color: var(--color-text-muted);
+}
+
+@media (max-width: 420px) {
+  .fm-gallery {
+    padding: 12px;
+  }
+}

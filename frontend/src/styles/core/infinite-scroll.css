@@ -1,0 +1,6 @@
+.infinite-scroll-loader {
+  display: flex;
+  min-height: 36px;
+  align-items: center;
+  justify-content: center;
+}

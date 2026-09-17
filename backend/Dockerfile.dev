@@ -1,0 +1,11 @@
+FROM mcr.microsoft.com/dotnet/sdk:9.0
+
+RUN apt-get update \
+	&& apt-get install -y --no-install-recommends ffmpeg \
+	&& rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+EXPOSE 8080
+
+CMD ["dotnet", "watch", "run", "--project", "src/Feed.Api/Feed.Api.csproj", "--urls", "http://+:8080"]

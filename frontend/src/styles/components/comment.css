@@ -1,0 +1,148 @@
+.post-comments {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+
+  margin-top: 14px;
+  padding-top: 14px;
+
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.comment {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  gap: 9px;
+
+  margin: 0;
+
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.comment-avatar {
+  display: grid;
+  place-items: center;
+
+  width: 38px;
+  height: 38px;
+  flex: 0 0 30px;
+
+  overflow: hidden;
+  border-radius: 50%;
+
+  background: var(--color-avatar-bg);
+  color: var(--color-avatar-text);
+
+  object-fit: cover;
+
+  font-size: 10px;
+  font-weight: 600;
+  user-select: none;
+}
+
+.comment-avatar-fallback {
+  display: grid;
+  place-items: center;
+
+  width: 100%;
+  height: 100%;
+}
+
+.comment-content {
+  min-width: 0;
+  padding-top: 1px;
+}
+
+.comment-content > div {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+
+  min-width: 0;
+  margin-bottom: 3px;
+}
+
+.comment-content strong {
+  overflow: hidden;
+
+  color: var(--color-text-light);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.3;
+
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.comment-content time {
+  flex: 0 0 auto;
+
+  color: var(--color-text-dim);
+  font-size: 10px;
+  line-height: 1.3;
+}
+
+.comment-content p {
+  margin: 0 0 4px;
+
+  color: var(--color-text-faint);
+  font-size: 12px;
+  line-height: 1.45;
+
+  overflow-wrap: anywhere;
+}
+
+.comment-content .icon-action {
+  margin-top: 1px;
+
+  font-size: 11px;
+}
+
+.comment-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  margin-top: 10px;
+}
+
+.comment-form .input {
+  flex: 1;
+  min-width: 0;
+  height: 34px;
+
+  padding: 0 10px;
+
+  border-radius: var(--radius-sm);
+
+  font-size: 12px;
+}
+
+.comment-form .btn-icon-filled {
+  flex: 0 0 auto;
+}
+
+.comment-toggle {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  margin-top: 10px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  cursor: pointer;
+}
+
+.comment-toggle img {
+  width: 17px;
+  height: 17px;
+}
+
+.comment-toggle:hover {
+  background: var(--color-surface-hover);
+  border-color: var(--color-border-strong);
+}

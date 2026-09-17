@@ -1,0 +1,71 @@
+.spinner {
+  display: inline-block;
+  width: 26px;
+  height: 26px;
+  border: 2px solid color-mix(in srgb, var(--color-text) 16%, transparent);
+  border-top-color: var(--color-text-muted);
+  border-radius: 50%;
+  color: var(--color-text-muted);
+  animation: spinner-rotate 800ms linear infinite;
+  vertical-align: middle;
+}
+
+.spinner--media {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  width: auto;
+  height: auto;
+  place-items: center;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  animation: none;
+  z-index: 1;
+  vertical-align: initial;
+}
+
+.spinner--media::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    105deg,
+    transparent 25%,
+    color-mix(in srgb, var(--color-text) 8%, transparent) 48%,
+    transparent 70%
+  );
+  transform: translateX(-100%);
+  animation: spinner-sweep 1.35s ease-in-out infinite;
+}
+
+.spinner--media::after {
+  content: "";
+  width: 26px;
+  height: 26px;
+  border: 2px solid color-mix(in srgb, var(--color-text) 16%, transparent);
+  border-top-color: var(--color-text-muted);
+  border-radius: 50%;
+  animation: spinner-rotate 800ms linear infinite;
+  z-index: 1;
+}
+
+@keyframes spinner-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes spinner-sweep {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation-duration: 1.4s;
+  }
+}

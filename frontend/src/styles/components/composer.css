@@ -1,0 +1,251 @@
+.composer-dock {
+  position: fixed;
+  right: max(16px, calc(50% - 360px));
+  bottom: 12px;
+  left: max(16px, calc(50% - 360px));
+  z-index: 20;
+
+--composer-accent: var(--color-accent);
+--composer-accent-soft: rgba(232, 232, 232, 0.1);
+--composer-accent-strong: var(--color-text);
+--composer-accent-ink: var(--color-bg);
+}
+
+.composer-dock > .feed-heading {
+  justify-content: flex-end;
+}
+
+.composer-dock > .feed-heading .btn {
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.composer-dock > .feed-heading .btn:hover {
+  color: var(--composer-accent-strong);
+}
+
+.composer {
+  position: relative;
+  overflow: hidden;
+  margin: 0;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-deep);
+  box-shadow: 0 8px 24px var(--color-shadow);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.composer::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 12px;
+  right: 12px;
+  height: 1px;
+
+  opacity: 0.35;
+  transition: opacity 0.25s ease;
+}
+
+.composer:focus-within {
+  border-color: var(--composer-accent);
+  box-shadow: 0 8px 28px var(--color-shadow), 0 0 0 3px var(--composer-accent-soft);
+}
+
+.composer:focus-within::before {
+  opacity: 0.9;
+}
+
+.composer.is-drag-active {
+  border-color: var(--composer-accent);
+  border-style: dashed;
+  box-shadow: 0 8px 28px var(--color-shadow), 0 0 0 3px var(--composer-accent-soft);
+}
+
+.textarea-composer {
+  max-height: 120px;
+  padding: 14px 16px 10px;
+  background: transparent;
+  border: none;
+  resize: none;
+  outline: none;
+  color: inherit;
+}
+
+.textarea-composer::placeholder {
+  transition: color 0.15s ease;
+}
+
+.composer:focus-within .textarea-composer::placeholder {
+  color: var(--composer-accent-strong);
+}
+
+.composer-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-top: 2px solid var(--color-border-subtle);
+}
+
+.composer-footer .btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-text-dim);
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.composer-footer .btn-secondary:hover {
+  border-color: var(--composer-accent);
+  color: var(--composer-accent-strong);
+  background: var(--composer-accent-soft);
+}
+
+.composer-footer .btn-secondary .icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.composer-footer .btn-primary {
+  height: 36px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 999px;
+  background: linear-gradient(180deg, var(--composer-accent-strong), var(--composer-accent));
+  color: var(--composer-accent-ink);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+}
+
+.composer-footer .btn-primary:hover:not(:disabled) {
+  box-shadow: 0 4px 14px var(--composer-accent-soft);
+  transform: translateY(-1px);
+}
+
+.composer-footer .btn-primary:active:not(:disabled) {
+  transform: translateY(0) scale(0.97);
+}
+
+.composer-footer .btn-primary:disabled {
+  opacity: 0.6;
+  cursor: default;
+  transform: none;
+}
+
+.composer-selected-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0 12px 10px;
+  list-style: none;
+}
+
+.composer-file-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 180px;
+  padding: 4px 6px 4px 10px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 999px;
+  background: var(--color-surface-deep);
+  color: var(--color-text-dim);
+  font-size: 12px;
+}
+
+.composer-file-chip span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.composer-file-chip button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--color-text-dim);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.composer-file-chip button:hover {
+  background: var(--composer-accent-soft);
+  color: var(--composer-accent-strong);
+}
+
+.composer-file-chip button svg {
+  width: 10px;
+  height: 10px;
+}
+
+@media (max-width: 700px) {
+  .composer-dock {
+    right: 8px;
+    bottom: 8px;
+    left: 8px;
+  }
+
+  .composer-footer {
+    gap: 6px;
+    padding: 6px 8px;
+  }
+
+  .composer-footer .btn-secondary {
+    padding: 0;
+    width: 36px;
+    height: 36px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .composer-footer .btn-secondary .attach-label {
+    display: none;
+  }
+
+  .composer-footer .btn-secondary .icon {
+    margin: 0;
+  }
+
+  .composer-footer .btn-primary {
+    flex-shrink: 0;
+    padding: 0 16px;
+    white-space: nowrap;
+  }
+
+  .textarea-composer {
+    max-height: 96px;
+    padding: 12px 14px 8px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .composer,
+  .composer::before,
+  .composer-footer .btn-primary,
+  .composer-footer .btn-secondary,
+  .composer-file-chip button,
+  .composer-dock > .feed-heading .btn {
+    transition: none;
+  }
+}

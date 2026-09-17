@@ -1,0 +1,94 @@
+.archive-page {
+  width: min(100%, 720px);
+  margin: 0 auto;
+  position: relative;
+  left: -110px;
+  padding: 60px 16px 240px;
+  color: var(--color-accent);
+  font-family: var(--font-sans);
+}
+
+.archive-subtitle {
+  margin: 0;
+  color: var(--color-text-faint);
+  font-size: 14px;
+}
+
+.archive-error {
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--color-danger-border);
+  border-radius: var(--radius-md);
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+  font-size: 13px;
+}
+
+.calendar-container {
+  border-radius: var(--radius-md);
+}
+
+
+.archive-day-header {
+  padding: 20px 0 24px;
+  margin-bottom: 20px;
+  border-bottom: 2px solid var(--color-border-subtle);
+  text-align: center;
+}
+
+.archive-day-title {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.archive-icon {
+  font-size: 24px;
+  line-height: 1;
+}
+
+.archive-day-title h1 {
+  margin: 0;
+  color: var(--color-text);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+.archive-day-date {
+  margin-bottom: 12px;
+  color: var(--color-text-faint);
+  font-size: 13px;
+  text-transform: capitalize;
+}
+
+.archive-day-stats {
+  display: flex;
+  gap: 24px;
+  justify-content: center;
+  color: var(--color-text-faint);
+  font-size: 13px;
+}
+
+.archive-posts {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.archive-loading,
+.archive-empty {
+  text-align: center;
+  color: var(--color-text-dim);
+  padding: 40px 20px;
+  font-size: 14px;
+}
+
+@media (max-width: 700px) {
+  .archive-page {
+    left: auto;
+  }
+
+}
