@@ -10,7 +10,9 @@ import { AvatarMedia } from "../components/ui/AvatarMedia";
 import "../styles/pages/postishki.css";
 
 function getPostTitle(post: Post) {
-  return post.title?.trim() || post.text?.trim().split("\n")[0] || "Без заголовка";
+  return (
+    post.title?.trim() || post.text?.trim().split("\n")[0] || "Без заголовка"
+  );
 }
 
 function getPostExcerpt(post: Post) {
@@ -18,9 +20,9 @@ function getPostExcerpt(post: Post) {
 }
 
 function getCoverUrl(post: Post) {
-  const image = post.blocks.find(
-    (block) => block.type === "image" && block.file,
-  )?.file || post.files.find((file) => file.contentType.startsWith("image/"));
+  const image =
+    post.blocks.find((block) => block.type === "image" && block.file)?.file ||
+    post.files.find((file) => file.contentType.startsWith("image/"));
 
   return image ? getBrowserFileUrl(image.downloadUrl) : null;
 }
@@ -48,7 +50,9 @@ function isAdmin() {
     const roleClaim =
       payload.role ??
       payload["http://schemas.microsoft.com/ws/2008/06/identity/claims/role"];
-    return (Array.isArray(roleClaim) ? roleClaim : [roleClaim]).includes("Admin");
+    return (Array.isArray(roleClaim) ? roleClaim : [roleClaim]).includes(
+      "Admin",
+    );
   } catch {
     return false;
   }
@@ -121,7 +125,9 @@ export function PostishkiPage() {
   async function deletePost(postId: string) {
     try {
       await postsApi.deletePost(postId);
-      setPosts((currentPosts) => currentPosts.filter((post) => post.id !== postId));
+      setPosts((currentPosts) =>
+        currentPosts.filter((post) => post.id !== postId),
+      );
     } catch {
       setError("Не удалось удалить постишку");
     }
@@ -136,15 +142,20 @@ export function PostishkiPage() {
   }, []);
 
   if (isLoading) {
-    return <div className="postishki-page"><Spinner /></div>;
+    return (
+      <div className="postishki-page postishki-page-loading">
+        <Spinner />
+      </div>
+    );
   }
 
   return (
     <section className="postishki-page">
-      <header className="postishki-header">
-      </header>
+      <header className="postishki-header"></header>
       {error && <p className="postishki-error">{error}</p>}
-      {!error && posts.length === 0 && <p className="postishki-empty">Постишек пока нет.</p>}
+      {!error && posts.length === 0 && (
+        <p className="postishki-empty">Постишек пока нет.</p>
+      )}
       <div className="postishki-list">
         {posts.map((post, index) => (
           <PostishkiCard
