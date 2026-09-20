@@ -32,6 +32,7 @@ const navigationItems = [
   { label: "Архив", path: "/archive", icon: archiveIcon },
   { label: "Постишки", path: "/posts", icon: pencilIcon },
   { label: "Файлы", path: "/files", icon: storageIcon },
+  { label: "Общие файлы", path: "/files/common", icon: storageIcon },
   { label: "Пинтерест", path: "/pinterest", icon: storageIcon },
 ];
 

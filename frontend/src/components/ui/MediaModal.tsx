@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { SyntheticEvent } from "react";
+import { createPortal } from "react-dom";
 import { Audio, AudioPlayer, AudioSkin } from "@videojs/react/audio";
 import { Video, VideoPlayer, VideoSkin } from "@videojs/react/video";
 import "@videojs/react/audio/skin.css";
@@ -17,8 +18,17 @@ export function MediaModal({
   url: string;
   onClose: () => void;
 }) {
-  const [videoAspectRatio, setVideoAspectRatio] = useState(16 / 9);
+  const [videoAspectRatio, setVideoAspectRatio] = useState<number | null>(null);
   const displayName = name.length > 40 ? `${name.slice(0, 39)}…` : name;
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
 
   function handleVideoMetadata(event: SyntheticEvent<HTMLVideoElement>) {
     const video = event.currentTarget;
@@ -27,7 +37,8 @@ export function MediaModal({
     }
   }
 
-  return (
+  return createPortal(
+    (
     <div
       className="media-modal"
       role="dialog"
@@ -54,8 +65,12 @@ export function MediaModal({
         </div>
         {type === "video" ? (
           <div
-            className="media-video-stage"
-            style={{ "--media-video-ratio": videoAspectRatio } as React.CSSProperties}
+            className={`media-video-stage${videoAspectRatio ? " is-ready" : ""}`}
+            style={
+              videoAspectRatio
+                ? ({ "--media-video-ratio": videoAspectRatio } as React.CSSProperties)
+                : undefined
+            }
           >
             <VideoPlayer>
               <VideoSkin>
@@ -77,5 +92,7 @@ export function MediaModal({
         )}
       </div>
     </div>
+    ),
+    document.body,
   );
 }

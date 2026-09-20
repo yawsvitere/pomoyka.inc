@@ -88,6 +88,76 @@ public class FilesController : ControllerBase
         return Ok(new { folders, files });
     }
 
+    [HttpGet("common")]
+    public async Task<ActionResult<object>> GetCommonLibrary()
+    {
+        var visibleAccessLevels = new[] { FileAccessLevel.Public, FileAccessLevel.Authenticated };
+        var folders = await _db.FileFolders.AsNoTracking()
+            .Where(x => visibleAccessLevels.Contains(x.AccessLevel))
+            .OrderBy(x => x.Name)
+            .Select(x => new FileFolderDto(
+                x.Id,
+                x.Name,
+                x.AccessLevel,
+                x.Files.Count(file => visibleAccessLevels.Contains(file.AccessLevel)),
+                x.CreatedAt,
+                $"/files/gallery/{x.Id}"))
+            .ToListAsync();
+
+        var userFiles = await _db.UserFiles.AsNoTracking()
+            .Include(x => x.Folder)
+            .Where(x => visibleAccessLevels.Contains(x.AccessLevel))
+            .OrderByDescending(x => x.UploadedAt)
+            .ToListAsync();
+
+        var mainFeedFiles = await _db.PostFiles.AsNoTracking()
+            .Include(x => x.Post)
+            .Where(x => x.Post != null && !x.Post.IsPostishka)
+            .OrderByDescending(x => x.UploadedAt)
+            .ToListAsync();
+        var postishkaFiles = await _db.PostFiles.AsNoTracking()
+            .Include(x => x.Post)
+            .Where(x => x.Post != null && x.Post.IsPostishka)
+            .OrderByDescending(x => x.UploadedAt)
+            .ToListAsync();
+        var postFiles = mainFeedFiles
+            .Concat(postishkaFiles)
+            .OrderByDescending(x => x.UploadedAt)
+            .ToList();
+
+        var shitpostFolderId = Guid.Empty;
+        folders.Insert(0, new FileFolderDto(
+            shitpostFolderId,
+            "shitpost",
+            FileAccessLevel.Authenticated,
+            postFiles.Count,
+            postFiles.Count > 0 ? postFiles.Min(x => x.UploadedAt) : DateTime.UtcNow,
+            string.Empty));
+
+        var files = userFiles.Select(x => ToUserFileDto(x)).ToList();
+        files.AddRange(postFiles.Select(x => new UserFileDto(
+            x.Id,
+            x.FileName,
+            x.ContentType,
+            x.SizeBytes,
+            null,
+            null,
+            x.Post?.AccessLevel == PostAccessLevel.Public
+                ? FileAccessLevel.Public
+                : FileAccessLevel.Authenticated,
+            shitpostFolderId,
+            "shitpost",
+            x.UploadedAt,
+            $"{Request.Scheme}://{Request.Host}/api/files/post/{x.Id}/download",
+            (x.ContentType ?? string.Empty).StartsWith("image/", StringComparison.OrdinalIgnoreCase)
+                ? GetPreviewUrl(x.StorageKey, isVideo: false)
+                : (x.ContentType ?? string.Empty).StartsWith("video/", StringComparison.OrdinalIgnoreCase)
+                    ? GetPreviewUrl(x.StorageKey, isVideo: true)
+                    : null)));
+
+        return Ok(new { folders, files });
+    }
+
     [HttpGet("quota")]
     public async Task<ActionResult<object>> GetQuota()
     {
@@ -724,6 +794,29 @@ public class FilesController : ControllerBase
 
     private static string BuildSha256DownloadUrl(string hash) => $"/api/files/sha256/{hash}/download";
 
+    private string? GetPreviewUrl(string? storageKey, bool isVideo)
+    {
+        if (string.IsNullOrWhiteSpace(storageKey)) return null;
+        var previewKey = isVideo
+            ? _storage.GetVideoPreviewObjectKey(storageKey)
+            : _storage.GetPreviewObjectKey(storageKey);
+        return _storage.GetPublicObjectUrl(previewKey);
+    }
+
     private UserFileDto ToUserFileDto(UserFile file, FileFolder? folder = null) =>
-        new(file.Id, file.FileName, file.ContentType, file.SizeBytes, file.Width, file.Height, file.AccessLevel, file.FolderId, folder?.Name ?? file.Folder?.Name, file.UploadedAt, BuildDownloadUrl(file.Id), file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase) ? _storage.GetPublicObjectUrl(_storage.GetPreviewObjectKey(file.StorageKey)) : null);
+        new(
+            file.Id,
+            file.FileName ?? string.Empty,
+            file.ContentType ?? string.Empty,
+            file.SizeBytes,
+            file.Width,
+            file.Height,
+            file.AccessLevel,
+            file.FolderId,
+            folder?.Name ?? file.Folder?.Name,
+            file.UploadedAt,
+            BuildDownloadUrl(file.Id),
+            (file.ContentType ?? string.Empty).StartsWith("image/", StringComparison.OrdinalIgnoreCase)
+                ? GetPreviewUrl(file.StorageKey, isVideo: false)
+                : null);
 }

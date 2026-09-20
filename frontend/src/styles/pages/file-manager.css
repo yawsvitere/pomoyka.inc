@@ -102,7 +102,6 @@
   gap: 14px;
   width: 100%;
   box-sizing: border-box;
-  margin-top: 18px;
   padding: 14px 18px;
   border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-md, 10px);
@@ -276,14 +275,6 @@
   font-size: 13px;
   font-weight: 500;
   pointer-events: none;
-}
-
-.fm-page .context-menu-popover {
-  transform: none;
-}
-
-.fm-page .context-menu-popover--left {
-  transform: translateX(-100%);
 }
 
 .fm-table-head,
@@ -728,8 +719,14 @@
   display: flex;
   align-items: center;
   gap: 6px;
-
   font-size: 12.5px;
+}
+.fm-breadcrumb-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
 }
 .fm-breadcrumb button {
   border: 0;
@@ -749,6 +746,71 @@
 .fm-breadcrumb-current {
   color: var(--color-text);
   font-weight: 500;
+}
+
+.fm-filter {
+  position: relative;
+  flex: 0 0 auto;
+}
+.fm-filter-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 32px;
+  padding: 0 11px;
+  white-space: nowrap;
+}
+.fm-filter-button.is-open {
+  border-color: var(--color-text-muted);
+  color: var(--color-text);
+}
+.fm-filter-button-icon {
+  display: block;
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+  color: var(--color-text-muted);
+  filter: brightness(0) invert(1);
+  line-height: 1;
+}
+.fm-filter-chevron {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1;
+}
+.fm-filter-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 10;
+  width: 100%;
+  min-width: 154px;
+  max-width: 100%;
+  padding: 5px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md, 10px);
+  background: var(--color-surface-raised);
+  box-shadow: var(--shadow-md, 0 8px 24px rgb(0 0 0 / 16%));
+}
+.fm-filter-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 32px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: var(--radius-sm, 6px);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font: 13px var(--font-sans, inherit);
+  text-align: left;
+  cursor: pointer;
+}
+.fm-filter-option:hover,
+.fm-filter-option.is-selected {
+  background: var(--color-surface-hover);
+  color: var(--color-text);
 }
 
 .fm-toolbar-btn {

@@ -6,6 +6,7 @@ import {
   type ReactNode,
   type TouchEvent,
 } from "react";
+import { createPortal } from "react-dom";
 import twemoji from "@twemoji/api";
 import type { Post } from "../../api/types";
 import { getBrowserFileUrl } from "../../utils/fileUrl";
@@ -107,8 +108,10 @@ export function ContextMenu({
     const previousBodyOverflow = document.body.style.overflow;
     const previousHtmlOverflow = document.documentElement.style.overflow;
     const previousBodyPaddingRight = document.body.style.paddingRight;
-    const previousHtmlPaddingRight = document.documentElement.style.paddingRight;
-    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+    const previousHtmlPaddingRight =
+      document.documentElement.style.paddingRight;
+    const scrollbarWidth =
+      window.innerWidth - document.documentElement.clientWidth;
 
     if (scrollbarWidth > 0) {
       document.body.style.paddingRight = `${scrollbarWidth}px`;
@@ -351,170 +354,182 @@ export function ContextMenu({
       onTouchCancel={handleTouchCancel}
     >
       {children}
-      {position && (
-        <>
-          <div
-            className="context-menu-backdrop"
-            style={{ pointerEvents: "auto" }}
-            onPointerDownCapture={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-            }}
-            onPointerUpCapture={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              closeMenu();
-            }}
-            onTouchStartCapture={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-            }}
-            onTouchEndCapture={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              closeMenu();
-            }}
-            onClickCapture={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-            }}
-            onContextMenuCapture={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              closeMenu();
-            }}
-          />
-          <div
-            className={`context-menu-popover${triggerPlacement === "left" ? " context-menu-popover--left" : ""}${popoverClassName ? ` ${popoverClassName}` : ""}`}
-            ref={popoverRef}
-            style={{ left: position.x, top: position.y, pointerEvents: "auto" }}
-            onClick={(event) => event.stopPropagation()}
-            onPointerDown={(event) => event.stopPropagation()}
-          >
-            {customActions ? (
-              <div className="context-menu">
-                <div className="context-menu__section">
-                  {customActions.map((action) => (
-                    <button
-                      key={action.key ?? action.label}
-                      type="button"
-                      className={`context-menu__item${
-                        action.danger ? " context-menu__item--danger" : ""
-                      }`}
-                      disabled={action.disabled}
-                      onClick={() =>
-                        run(async () => {
-                          if (action.href) {
-                            const link = document.createElement("a");
-                            link.href = action.href;
-                            link.target = "_blank";
-                            link.rel = "noreferrer";
-                            link.click();
-                            return;
-                          }
-                          if (action.onClick) {
-                            await action.onClick();
-                          }
-                        })
-                      }
-                    >
-                      {action.icon && <MenuIcon src={action.icon} />}
-                      <span className="context-menu__label">{action.label}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <>
-                {onReaction && (
-                  <div className="context-menu-reactions">
-                    {reactionOptions.map((emoji) => (
+      {position &&
+        createPortal(
+          <>
+            <div
+              className="context-menu-backdrop"
+              style={{ pointerEvents: "auto" }}
+              onPointerDownCapture={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+              }}
+              onPointerUpCapture={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                closeMenu();
+              }}
+              onTouchStartCapture={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+              }}
+              onTouchEndCapture={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                closeMenu();
+              }}
+              onClickCapture={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+              }}
+              onContextMenuCapture={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                closeMenu();
+              }}
+            />
+            <div
+              className={`context-menu-popover${triggerPlacement === "left" ? " context-menu-popover--left" : ""}${popoverClassName ? ` ${popoverClassName}` : ""}`}
+              ref={popoverRef}
+              style={{
+                left: position.x,
+                top: position.y,
+                pointerEvents: "auto",
+              }}
+              onClick={(event) => event.stopPropagation()}
+              onPointerDown={(event) => event.stopPropagation()}
+            >
+              {customActions ? (
+                <div className="context-menu">
+                  <div className="context-menu__section">
+                    {customActions.map((action) => (
                       <button
-                        key={emoji}
+                        key={action.key ?? action.label}
                         type="button"
-                        onClick={() => run(() => onReaction(emoji))}
-                        title={emoji}
+                        className={`context-menu__item${
+                          action.danger ? " context-menu__item--danger" : ""
+                        }`}
+                        disabled={action.disabled}
+                        onClick={() =>
+                          run(async () => {
+                            if (action.href) {
+                              const link = document.createElement("a");
+                              link.href = action.href;
+                              link.target = "_blank";
+                              link.rel = "noreferrer";
+                              link.click();
+                              return;
+                            }
+                            if (action.onClick) {
+                              await action.onClick();
+                            }
+                          })
+                        }
                       >
-                        <ReactionIcon emoji={emoji} />
+                        {action.icon && <MenuIcon src={action.icon} />}
+                        <span className="context-menu__label">
+                          {action.label}
+                        </span>
                       </button>
                     ))}
                   </div>
-                )}
+                </div>
+              ) : (
+                <>
+                  {onReaction && (
+                    <div className="context-menu-reactions">
+                      {reactionOptions.map((emoji) => (
+                        <button
+                          key={emoji}
+                          type="button"
+                          onClick={() => run(() => onReaction(emoji))}
+                          title={emoji}
+                        >
+                          <ReactionIcon emoji={emoji} />
+                        </button>
+                      ))}
+                    </div>
+                  )}
 
-                <div className="context-menu">
-                  <div className="context-menu__section">
-                    {onComment && (
+                  <div className="context-menu">
+                    <div className="context-menu__section">
+                      {onComment && (
+                        <button
+                          type="button"
+                          className="context-menu__item"
+                          onClick={() => run(onComment)}
+                        >
+                          <MenuIcon src={messageIcon} />
+                          <span className="context-menu__label">
+                            Комментарий
+                          </span>
+                        </button>
+                      )}
+
                       <button
                         type="button"
                         className="context-menu__item"
-                        onClick={() => run(onComment)}
+                        disabled={!onEdit}
+                        onClick={() => onEdit && run(onEdit)}
                       >
-                        <MenuIcon src={messageIcon} />
-                        <span className="context-menu__label">Комментарий</span>
+                        <MenuIcon src={pencilIcon} />
+                        <span className="context-menu__label">
+                          Редактировать
+                        </span>
                       </button>
+                    </div>
+
+                    {post && post.files.length > 0 && (
+                      <div className="context-menu__section">
+                        {post.files.map((file) => (
+                          <button
+                            key={file.id}
+                            type="button"
+                            className="context-menu__item"
+                            onClick={() => run(() => downloadFile(file))}
+                          >
+                            <MenuIcon src={downloadIcon} />
+                            <span className="context-menu__label">
+                              Скачать {file.fileName}
+                            </span>
+                          </button>
+                        ))}
+
+                        {imageFiles.map((file) => (
+                          <button
+                            key={`copy-${file.id}`}
+                            type="button"
+                            className="context-menu__item"
+                            onClick={() => run(() => void copyImage(file))}
+                          >
+                            <MenuIcon src={copyIcon} />
+                            <span className="context-menu__label">
+                              Копировать изображение
+                            </span>
+                          </button>
+                        ))}
+                      </div>
                     )}
 
-                    <button
-                      type="button"
-                      className="context-menu__item"
-                      disabled={!onEdit}
-                      onClick={() => onEdit && run(onEdit)}
-                    >
-                      <MenuIcon src={pencilIcon} />
-                      <span className="context-menu__label">Редактировать</span>
-                    </button>
+                    {canDelete && onDelete && (
+                      <div className="context-menu__section">
+                        <button
+                          type="button"
+                          className="context-menu__item context-menu__item--danger"
+                          onClick={() => run(() => setDeleteDialogOpen(true))}
+                        >
+                          <MenuIcon src={deleteIcon} />
+                          <span className="context-menu__label">Удалить</span>
+                        </button>
+                      </div>
+                    )}
                   </div>
-
-                  {post && post.files.length > 0 && (
-                    <div className="context-menu__section">
-                      {post.files.map((file) => (
-                        <button
-                          key={file.id}
-                          type="button"
-                          className="context-menu__item"
-                          onClick={() => run(() => downloadFile(file))}
-                        >
-                          <MenuIcon src={downloadIcon} />
-                          <span className="context-menu__label">
-                            Скачать {file.fileName}
-                          </span>
-                        </button>
-                      ))}
-
-                      {imageFiles.map((file) => (
-                        <button
-                          key={`copy-${file.id}`}
-                          type="button"
-                          className="context-menu__item"
-                          onClick={() => run(() => void copyImage(file))}
-                        >
-                          <MenuIcon src={copyIcon} />
-                          <span className="context-menu__label">
-                            Копировать изображение
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-
-                  {canDelete && onDelete && (
-                    <div className="context-menu__section">
-                      <button
-                        type="button"
-                        className="context-menu__item context-menu__item--danger"
-                        onClick={() => run(() => setDeleteDialogOpen(true))}
-                      >
-                        <MenuIcon src={deleteIcon} />
-                        <span className="context-menu__label">Удалить</span>
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </>
-            )}
-          </div>
-        </>
-      )}
+                </>
+              )}
+            </div>
+          </>,
+          document.body,
+        )}
       {!customActions && (
         <AlertDialog
           open={deleteDialogOpen}

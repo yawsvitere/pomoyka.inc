@@ -21,7 +21,7 @@
   pointer-events: auto;
 }
 
-.fm-page .context-menu-popover {
+.context-menu-popover--left {
   transform: translateX(-100%);
 }
 

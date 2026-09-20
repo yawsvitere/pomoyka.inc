@@ -7,6 +7,7 @@ import { MediaModal } from "../components/ui/MediaModal";
 import copyIcon from "../assets/icons/copy.svg";
 import deleteIcon from "../assets/icons/delete.svg";
 import downloadIcon from "../assets/icons/download.svg";
+import filterIcon from "../assets/icons/filter.svg";
 import folderIcon from "../assets/icons/folder.svg";
 import searchIcon from "../assets/icons/search.svg";
 import "react-photo-view/dist/react-photo-view.css";
@@ -68,8 +69,10 @@ function InlineRenameInput({
 
 function EmptyFilesState({
   onUpload,
+  readOnly = false,
 }: {
   onUpload: () => void;
+  readOnly?: boolean;
 }) {
   return (
     <div className="fm-empty-state">
@@ -77,12 +80,18 @@ function EmptyFilesState({
         <img src={folderIcon} alt="" />
       </div>
       <strong>Файлов пока нет</strong>
-      <p>Загрузите первый файл, чтобы начать работу.</p>
-      <div className="fm-empty-state-actions">
-        <button type="button" className="btn btn-primary" onClick={onUpload}>
-          Загрузить
-        </button>
-      </div>
+      <p>
+        {readOnly
+          ? "В общей библиотеке пока нет файлов."
+          : "Загрузите первый файл, чтобы начать работу."}
+      </p>
+      {!readOnly && (
+        <div className="fm-empty-state-actions">
+          <button type="button" className="btn btn-primary" onClick={onUpload}>
+            Загрузить
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -187,7 +196,11 @@ function ImageFilePreview({
 const PAGE_SIZE = 100;
 
 function accessLabel(accessLevel: filesApi.FileAccessLevel) {
-  return accessLevel === 2 ? "Публичный" : accessLevel === 1 ? "Братва" : "Приватный";
+  return accessLevel === 2
+    ? "Публичный"
+    : accessLevel === 1
+      ? "Братва"
+      : "Приватный";
 }
 
 type PendingDelete =
@@ -201,7 +214,17 @@ type RenameTarget =
   | { type: "file"; item: filesApi.UserFile }
   | null;
 
-export function FileManagerPage() {
+type FileFilter = "all" | "audio" | "video" | "image" | "other";
+
+const fileFilterLabels: Record<FileFilter, string> = {
+  all: "Все файлы",
+  audio: "Аудио",
+  video: "Видео",
+  image: "Фото",
+  other: "Другое",
+};
+
+export function FileManagerPage({ shared = false }: { shared?: boolean }) {
   const [library, setLibrary] = useState<filesApi.Library>({
     folders: [],
     files: [],
@@ -213,6 +236,8 @@ export function FileManagerPage() {
   const [isDragging, setIsDragging] = useState(false);
   const [folderDialog, setFolderDialog] = useState(false);
   const [folderName, setFolderName] = useState("");
+  const [fileFilter, setFileFilter] = useState<FileFilter>("all");
+  const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [page, setPage] = useState(1);
   const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
@@ -231,6 +256,7 @@ export function FileManagerPage() {
     percent: number;
   } | null>(null);
   const uploadRef = useRef<HTMLInputElement>(null);
+  const filterMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     return () => {
@@ -241,8 +267,8 @@ export function FileManagerPage() {
   async function reload() {
     try {
       const [nextLibrary, nextQuota] = await Promise.all([
-        filesApi.getLibrary(),
-        filesApi.getQuota(),
+        shared ? filesApi.getCommonLibrary() : filesApi.getLibrary(),
+        shared ? Promise.resolve(null) : filesApi.getQuota(),
       ]);
       setLibrary(nextLibrary);
       setQuota(nextQuota);
@@ -252,11 +278,14 @@ export function FileManagerPage() {
   }
   useEffect(() => {
     void reload();
-  }, []);
+  }, [shared]);
 
   const folder = library.folders.find((item) => item.id === folderId);
   const quotaPercent = quota
-    ? Math.min(100, Math.round((quota.usedBytes / Math.max(quota.quotaBytes, 1)) * 100))
+    ? Math.min(
+        100,
+        Math.round((quota.usedBytes / Math.max(quota.quotaBytes, 1)) * 100),
+      )
     : 0;
 
   const filteredFiles = useMemo(
@@ -267,8 +296,15 @@ export function FileManagerPage() {
         )
         .filter((file) =>
           file.fileName.toLowerCase().includes(search.toLowerCase()),
-        ),
-    [folderId, library.files, search],
+        )
+        .filter((file) => {
+          if (fileFilter === "all") return true;
+          if (fileFilter === "image") return isImage(file);
+          if (fileFilter === "video") return isVideo(file);
+          if (fileFilter === "audio") return isAudio(file);
+          return !isImage(file) && !isVideo(file) && !isAudio(file);
+        }),
+    [fileFilter, folderId, library.files, search],
   );
 
   const filteredFolders = useMemo(
@@ -296,8 +332,9 @@ export function FileManagerPage() {
   );
 
   const visibleFiles = visibleItemsPage
-    .filter((entry): entry is { type: "file"; item: filesApi.UserFile } =>
-      entry.type === "file",
+    .filter(
+      (entry): entry is { type: "file"; item: filesApi.UserFile } =>
+        entry.type === "file",
     )
     .map((entry) => entry.item);
 
@@ -310,17 +347,29 @@ export function FileManagerPage() {
     setError("");
     const uploadFiles = Array.from(files);
     if (uploadFiles.length === 0) return;
-    setUploadProgress({ currentFile: uploadFiles[0].name, completed: 0, total: uploadFiles.length, percent: 0 });
+    setUploadProgress({
+      currentFile: uploadFiles[0].name,
+      completed: 0,
+      total: uploadFiles.length,
+      percent: 0,
+    });
     try {
       for (let index = 0; index < uploadFiles.length; index += 1) {
         const file = uploadFiles[index];
-        setUploadProgress({ currentFile: file.name, completed: index, total: uploadFiles.length, percent: Math.round((index / uploadFiles.length) * 100) });
+        setUploadProgress({
+          currentFile: file.name,
+          completed: index,
+          total: uploadFiles.length,
+          percent: Math.round((index / uploadFiles.length) * 100),
+        });
         await filesApi.uploadFile(file, folderId, (filePercent) => {
           setUploadProgress({
             currentFile: file.name,
             completed: index,
             total: uploadFiles.length,
-            percent: Math.round(((index + filePercent / 100) / uploadFiles.length) * 100),
+            percent: Math.round(
+              ((index + filePercent / 100) / uploadFiles.length) * 100,
+            ),
           });
         });
       }
@@ -365,8 +414,11 @@ export function FileManagerPage() {
 
   useEffect(() => {
     function handlePaste(event: ClipboardEvent) {
+      if (shared) return;
       const pastedImages = Array.from(event.clipboardData?.items ?? [])
-        .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+        .filter(
+          (item) => item.kind === "file" && item.type.startsWith("image/"),
+        )
         .map((item) => item.getAsFile())
         .filter((file): file is File => file !== null);
 
@@ -377,7 +429,20 @@ export function FileManagerPage() {
 
     document.addEventListener("paste", handlePaste);
     return () => document.removeEventListener("paste", handlePaste);
-  }, [folderId]);
+  }, [folderId, shared]);
+
+  useEffect(() => {
+    if (!isFilterMenuOpen) return;
+
+    function handlePointerDown(event: PointerEvent) {
+      if (!filterMenuRef.current?.contains(event.target as Node)) {
+        setIsFilterMenuOpen(false);
+      }
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [isFilterMenuOpen]);
 
   async function createFolder() {
     if (!folderName.trim()) return;
@@ -393,7 +458,10 @@ export function FileManagerPage() {
       setError(reason?.response?.data?.message ?? "Не удалось создать папку");
     }
   }
-  async function setFileAccess(file: filesApi.UserFile, accessLevel: filesApi.FileAccessLevel) {
+  async function setFileAccess(
+    file: filesApi.UserFile,
+    accessLevel: filesApi.FileAccessLevel,
+  ) {
     const updated = await filesApi.setFileVisibility(file.id, accessLevel);
     setLibrary((current) => ({
       ...current,
@@ -405,7 +473,10 @@ export function FileManagerPage() {
   async function toggleFile(file: filesApi.UserFile) {
     await setFileAccess(file, file.accessLevel === 2 ? 0 : 2);
   }
-  async function setFolderAccess(item: filesApi.FileFolder, accessLevel: filesApi.FileAccessLevel) {
+  async function setFolderAccess(
+    item: filesApi.FileFolder,
+    accessLevel: filesApi.FileAccessLevel,
+  ) {
     await filesApi.setFolderVisibility(item.id, accessLevel);
     setLibrary((current) => ({
       ...current,
@@ -444,7 +515,9 @@ export function FileManagerPage() {
       await filesApi.moveFile(fileId, targetFolderId);
       await reload();
     } catch (reason: any) {
-      setError(reason?.response?.data?.message ?? "Не удалось переместить файл");
+      setError(
+        reason?.response?.data?.message ?? "Не удалось переместить файл",
+      );
     }
   }
   function removeFolder(item: filesApi.FileFolder) {
@@ -453,7 +526,9 @@ export function FileManagerPage() {
   function startRename(target: RenameTarget) {
     if (!target) return;
     setRenameTarget(target);
-    setRenameName(target.type === "folder" ? target.item.name : target.item.fileName);
+    setRenameName(
+      target.type === "folder" ? target.item.name : target.item.fileName,
+    );
   }
   async function confirmRename() {
     if (!renameTarget || !renameName.trim()) return;
@@ -534,18 +609,22 @@ export function FileManagerPage() {
       <ContextMenu
         popoverClassName="fm-file-manager-context-menu"
         customActions={[
-          {
-            key: "upload",
-            label: "Загрузить файлы",
-            icon: downloadIcon,
-            onClick: () => uploadRef.current?.click(),
-          },
-          {
-            key: "paste",
-            label: "Вставить изображение",
-            icon: downloadIcon,
-            onClick: () => void pasteImagesFromClipboard(),
-          },
+          ...(!shared
+            ? [
+                {
+                  key: "upload",
+                  label: "Загрузить файлы",
+                  icon: downloadIcon,
+                  onClick: () => uploadRef.current?.click(),
+                },
+                {
+                  key: "paste",
+                  label: "Вставить изображение",
+                  icon: downloadIcon,
+                  onClick: () => void pasteImagesFromClipboard(),
+                },
+              ]
+            : []),
           ...(!folderId
             ? [
                 {
@@ -559,307 +638,510 @@ export function FileManagerPage() {
         ]}
       >
         <main className="fm-main">
-        {error && <div className="fm-error">{error}</div>}
+          {error && <div className="fm-error">{error}</div>}
 
-        <input
-          ref={uploadRef}
-          type="file"
-          multiple
-          style={{ display: "none" }}
-          onChange={(event) => {
-            if (event.target.files && event.target.files.length > 0) {
-              void upload(event.target.files);
-            }
-            event.target.value = "";
-          }}
-        />
+          <input
+            ref={uploadRef}
+            type="file"
+            multiple
+            style={{ display: "none" }}
+            onChange={(event) => {
+              if (event.target.files && event.target.files.length > 0) {
+                void upload(event.target.files);
+              }
+              event.target.value = "";
+            }}
+          />
 
-        <section className={`fm-quota${quotaPercent >= 90 ? " is-warning" : ""}`}>
-          <div
-            className="fm-quota-ring"
-            style={{ "--fm-quota-percent": `${quotaPercent}%` } as React.CSSProperties}
-            aria-label={`Использовано ${quotaPercent}% квоты`}
-          >
-            <span>{quotaPercent}%</span>
-          </div>
-          <div className="fm-quota-copy">
-            <strong>Хранилище</strong>
-            <span>
-              {quota ? `${formatSize(quota.usedBytes)} из ${formatSize(quota.quotaBytes)}` : "Загрузка квоты..."}
-            </span>
-          </div>
-          <span className="fm-quota-label">использовано</span>
-        </section>
-
-        {/* ---------- Toolbar: search pill / Favorited-All segment / Filters ---------- */}
-        <div className="fm-toolbar">
-          <div className="fm-search-wrap">
-            <img className="fm-search-icon" src={searchIcon} alt="" aria-hidden="true" />
-            <input
-              className="fm-search"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Поиск по названию файла"
-            />
-          </div>
-
-          <div className="fm-toolbar-spacer" />
-
-          {!folderId && (
-            <button
-              type="button"
-              className="btn btn-secondary fm-toolbar-btn"
-              onClick={() => setFolderDialog(true)}
+          {!shared && (
+            <section
+              className={`fm-quota${quotaPercent >= 90 ? " is-warning" : ""}`}
             >
-              Новая папка
-            </button>
-          )}
-          <button
-            type="button"
-            className="btn btn-primary fm-toolbar-btn"
-            onClick={() => uploadRef.current?.click()}
-          >
-            Загрузить
-          </button>
-        </div>
-
-        {selected.size > 0 && (
-          <div className="fm-bulk-bar">
-            <span>{selected.size} выбрано</span>
-            <div className="fm-bulk-actions">
-              <button className="btn btn-secondary btn-sm" onClick={() => void bulkSetVisibility(2)}>
-                Сделать публичными
-              </button>
-              <button className="btn btn-secondary btn-sm" onClick={() => void bulkSetVisibility(1)}>
-                Только авторизованным
-              </button>
-              <button className="btn btn-secondary btn-sm" onClick={() => void bulkSetVisibility(0)}>
-                Сделать приватными
-              </button>
-              <button
-                className="btn btn-danger btn-sm fm-bulk-danger"
-                onClick={() => void bulkDelete()}
+              <div
+                className="fm-quota-ring"
+                style={
+                  {
+                    "--fm-quota-percent": `${quotaPercent}%`,
+                  } as React.CSSProperties
+                }
+                aria-label={`Использовано ${quotaPercent}% квоты`}
               >
-                Удалить
+                <span>{quotaPercent}%</span>
+              </div>
+              <div className="fm-quota-copy">
+                <strong>Хранилище</strong>
+                <span>
+                  {quota
+                    ? `${formatSize(quota.usedBytes)} из ${formatSize(quota.quotaBytes)}`
+                    : "Загрузка квоты..."}
+                </span>
+              </div>
+              <span className="fm-quota-label">использовано</span>
+            </section>
+          )}
+
+          {/* ---------- Toolbar: search pill / Favorited-All segment / Filters ---------- */}
+          <div className="fm-toolbar">
+            <div className="fm-search-wrap">
+              <img
+                className="fm-search-icon"
+                src={searchIcon}
+                alt=""
+                aria-hidden="true"
+              />
+              <input
+                className="fm-search"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Поиск по названию файла"
+              />
+            </div>
+
+            <div className="fm-toolbar-spacer" />
+
+            {!shared && !folderId && (
+              <button
+                type="button"
+                className="btn btn-secondary fm-toolbar-btn"
+                onClick={() => setFolderDialog(true)}
+              >
+                Новая папка
               </button>
-              <button className="btn btn-ghost btn-sm" onClick={() => setSelected(new Set())}>Отмена</button>
+            )}
+            {!shared && (
+              <button
+                type="button"
+                className="btn btn-primary fm-toolbar-btn"
+                onClick={() => uploadRef.current?.click()}
+              >
+                Загрузить
+              </button>
+            )}
+          </div>
+
+          {selected.size > 0 && (
+            <div className="fm-bulk-bar">
+              <span>{selected.size} выбрано</span>
+              <div className="fm-bulk-actions">
+                <button
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => void bulkSetVisibility(2)}
+                >
+                  Сделать публичными
+                </button>
+                <button
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => void bulkSetVisibility(1)}
+                >
+                  Только авторизованным
+                </button>
+                <button
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => void bulkSetVisibility(0)}
+                >
+                  Сделать приватными
+                </button>
+                <button
+                  className="btn btn-danger btn-sm fm-bulk-danger"
+                  onClick={() => void bulkDelete()}
+                >
+                  Удалить
+                </button>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => setSelected(new Set())}
+                >
+                  Отмена
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="fm-breadcrumb-row">
+            <nav className="fm-breadcrumb">
+              <button
+                type="button"
+                className={`fm-breadcrumb-link${folderId ? "" : " is-current"}`}
+                onClick={() => setFolderId(null)}
+              >
+                Все файлы
+              </button>
+              {folder && (
+                <>
+                  <span className="fm-breadcrumb-sep">/</span>
+                  <span className="fm-breadcrumb-current">{folder.name}</span>
+                </>
+              )}
+            </nav>
+            <div className="fm-filter" ref={filterMenuRef}>
+              <button
+                type="button"
+                className={`btn btn-secondary fm-filter-button${isFilterMenuOpen ? " is-open" : ""}`}
+                aria-expanded={isFilterMenuOpen}
+                aria-haspopup="menu"
+                onClick={() => setIsFilterMenuOpen((open) => !open)}
+              >
+                <img
+                  className="fm-filter-button-icon"
+                  src={filterIcon}
+                  alt=""
+                  aria-hidden="true"
+                />
+                Фильтр: {fileFilterLabels[fileFilter]}
+              </button>
+              {isFilterMenuOpen && (
+                <div className="fm-filter-menu" role="menu">
+                  {(Object.keys(fileFilterLabels) as FileFilter[]).map(
+                    (filter) => (
+                      <button
+                        key={filter}
+                        type="button"
+                        role="menuitemradio"
+                        aria-checked={fileFilter === filter}
+                        className={`fm-filter-option${fileFilter === filter ? " is-selected" : ""}`}
+                        onClick={() => {
+                          setFileFilter(filter);
+                          setIsFilterMenuOpen(false);
+                        }}
+                      >
+                        <span>{fileFilterLabels[filter]}</span>
+                        {fileFilter === filter && (
+                          <span aria-hidden="true">✓</span>
+                        )}
+                      </button>
+                    ),
+                  )}
+                </div>
+              )}
             </div>
           </div>
-        )}
 
-        <nav className="fm-breadcrumb">
-          <button
-            type="button"
-            className={`fm-breadcrumb-link${folderId ? "" : " is-current"}`}
-            onClick={() => setFolderId(null)}
-          >
-            Все файлы
-          </button>
-          {folder && (
-            <>
-              <span className="fm-breadcrumb-sep">/</span>
-              <span className="fm-breadcrumb-current">{folder.name}</span>
-            </>
-          )}
-        </nav>
-
-        {/* ---------- Table: checkbox | avatar+name | cell | cell | badge | Edit ... ---------- */}
-        <section
-          className={`fm-list${isDragging ? " is-dragging" : ""}`}
-          onDragOver={(event) => {
-            if (!event.dataTransfer.types.includes("Files")) return;
-            event.preventDefault();
-            event.dataTransfer.dropEffect = "copy";
-            setIsDragging(true);
-          }}
-          onDragLeave={(event) => {
-            if (!event.currentTarget.contains(event.relatedTarget as Node)) {
+          {/* ---------- Table: checkbox | avatar+name | cell | cell | badge | Edit ... ---------- */}
+          <section
+            className={`fm-list${isDragging ? " is-dragging" : ""}`}
+            onDragOver={(event) => {
+              if (shared) return;
+              if (!event.dataTransfer.types.includes("Files")) return;
+              event.preventDefault();
+              event.dataTransfer.dropEffect = "copy";
+              setIsDragging(true);
+            }}
+            onDragLeave={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget as Node)) {
+                setIsDragging(false);
+              }
+            }}
+            onDrop={(event) => {
+              event.preventDefault();
               setIsDragging(false);
-            }
-          }}
-          onDrop={(event) => {
-            event.preventDefault();
-            setIsDragging(false);
-            if (event.dataTransfer.files.length > 0) {
-              void upload(event.dataTransfer.files);
-            }
-          }}
-        >
-          <div
-            className={`fm-list-scroll${visibleItemsPage.length === 0 && !folderId ? " is-empty" : ""}`}
+              if (shared) return;
+              if (event.dataTransfer.files.length > 0) {
+                void upload(event.dataTransfer.files);
+              }
+            }}
           >
-            <div className="fm-table-head">
-              <span className="fm-row-check">
-                <input
-                  type="checkbox"
-                  checked={
-                    visibleFiles.length > 0 &&
-                    visibleFiles.every((file) => selected.has(file.id))
-                  }
-                  onChange={toggleSelectAll}
-                />
-              </span>
-              <span>Имя</span>
-              <span>Размер</span>
-              <span>Загружен</span>
-              <span>Доступ</span>
-              <span />
-            </div>
-            {visibleItemsPage.length === 0 && !folderId ? (
-              <EmptyFilesState
-                onUpload={() => uploadRef.current?.click()}
-              />
-            ) : (
-              <>
-                {folderId && (
-                <div
-                  className={`fm-up-row${dragOverFolderId === "root" ? " is-drop-target" : ""}`}
-                  onDragOver={(event) => {
-                    if (!event.dataTransfer.types.includes("file-id")) return;
-                    event.preventDefault();
-                    event.stopPropagation();
-                    event.dataTransfer.dropEffect = "move";
-                    setDragOverFolderId("root");
-                  }}
-                  onDragLeave={() => setDragOverFolderId(null)}
-                  onDrop={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    const fileId = event.dataTransfer.getData("file-id");
-                    if (fileId) void moveFile(fileId, null);
-                    else setDragOverFolderId(null);
-                  }}
-                >
-                  <span className="fm-row-check" />
-                  <button
-                    type="button"
-                    className=" fm-file-name fm-folder-name fm-up-name"
-                    onClick={() => setFolderId(null)}
-                  >
-                    <img className="fm-folder-mark" src={folderIcon} alt="" />
-                    <span className="fm-file-meta">
-                      <strong>..</strong>
-                      
-                    </span>
-                  </button>
-                  <span />
-                  <span />
-                  <span />
-                  <div className="fm-row-actions fm-up-actions">
-
-                  </div>
-                </div>
-                )}
-                {visibleItemsPage.length === 0 && (
-                  <EmptyFilesState
-                    onUpload={() => uploadRef.current?.click()}
+            <div
+              className={`fm-list-scroll${visibleItemsPage.length === 0 && !folderId ? " is-empty" : ""}`}
+            >
+              <div className="fm-table-head">
+                <span className="fm-row-check">
+                  <input
+                    type="checkbox"
+                    checked={
+                      visibleFiles.length > 0 &&
+                      visibleFiles.every((file) => selected.has(file.id))
+                    }
+                    onChange={toggleSelectAll}
                   />
-                )}
-                {visibleItemsPage.map((entry) => {
-                  if (entry.type === "folder") {
-                const item = entry.item;
-                return (
-                  <ContextMenu
-                    customActions={[
-                      { key: "open", label: "Открыть", icon: folderIcon, onClick: () => setFolderId(item.id) },
-                      { key: "rename", label: "Переименовать", onClick: () => startRename({ type: "folder", item }) },
-                      { key: "share", label: "Поделиться", icon: copyIcon, onClick: () => void copyShareUrl(`${window.location.origin}/files/gallery/${item.id}`) },
-                      { key: "toggle-visibility", label: item.accessLevel === 2 ? "Скрыть галерею" : "Открыть галерею", icon: downloadIcon, onClick: () => void toggleFolder(item) },
-                      { key: "delete", label: "Удалить", icon: deleteIcon, danger: true, onClick: () => void removeFolder(item) },
-                    ]}
-                  >
+                </span>
+                <span>Имя</span>
+                <span>Размер</span>
+                <span>Загружен</span>
+                <span>Доступ</span>
+                <span />
+              </div>
+              {visibleItemsPage.length === 0 && !folderId ? (
+                <EmptyFilesState
+                  onUpload={() => uploadRef.current?.click()}
+                  readOnly={shared}
+                />
+              ) : (
+                <>
+                  {folderId && (
                     <div
-                      className={`fm-file-row fm-folder-row${dragOverFolderId === item.id ? " is-drop-target" : ""}`}
-                      key={item.id}
+                      className={`fm-up-row${dragOverFolderId === "root" ? " is-drop-target" : ""}`}
                       onDragOver={(event) => {
-                        if (!event.dataTransfer.types.includes("file-id")) return;
+                        if (!event.dataTransfer.types.includes("file-id"))
+                          return;
                         event.preventDefault();
                         event.stopPropagation();
                         event.dataTransfer.dropEffect = "move";
-                        setDragOverFolderId(item.id);
+                        setDragOverFolderId("root");
                       }}
                       onDragLeave={() => setDragOverFolderId(null)}
                       onDrop={(event) => {
                         event.preventDefault();
                         event.stopPropagation();
                         const fileId = event.dataTransfer.getData("file-id");
-                        if (fileId) void moveFile(fileId, item.id);
+                        if (fileId) void moveFile(fileId, null);
                         else setDragOverFolderId(null);
                       }}
                     >
-                    <span className="fm-row-check" />
-                    <div className="fm-file-name fm-folder-name">
-                      <img className="fm-folder-mark" src={folderIcon} alt="" />
-                      <span className="fm-file-meta">
-                        {renameTarget?.type === "folder" && renameTarget.item.id === item.id ? (
-                          <InlineRenameInput
-                            value={renameName}
-                            onChange={setRenameName}
-                            onConfirm={confirmRename}
-                            onCancel={() => setRenameTarget(null)}
-                          />
-                        ) : (
-                          <button
-                            type="button"
-                            className="fm-folder-name"
-                            onClick={() => setFolderId(item.id)}
-                          >
-                            <strong>{item.name}</strong>
-                          </button>
-                        )}
-                        <small>{item.fileCount} файлов</small>
-                      </span>
-                    </div>
-                    <span className="fm-cell"></span>
-                    <span className="fm-cell">
-                      {new Date(item.createdAt).toLocaleDateString("ru-RU")}
-                    </span>
-                    <ContextMenu
-                      triggerPlacement="left"
-                      customActions={[
-                        {
-                          key: "public",
-                          label: "Сделать публичным",
-                          disabled: item.accessLevel === 2,
-                          onClick: () => void setFolderAccess(item, 2),
-                        },
-                        {
-                          key: "authenticated",
-                          label: "Только авторизованным",
-                          disabled: item.accessLevel === 1,
-                          onClick: () => void setFolderAccess(item, 1),
-                        },
-                        {
-                          key: "private",
-                          label: "Сделать приватным",
-                          disabled: item.accessLevel === 0,
-                          onClick: () => void setFolderAccess(item, 0),
-                        },
-                      ]}
-                    >
+                      <span className="fm-row-check" />
                       <button
                         type="button"
-                        className={`btn btn-ghost fm-badge fm-visibility${item.accessLevel === 2 ? " public" : ""}`}
-                        data-context-menu-trigger="true"
-                        aria-label={`Доступ папки ${item.name}`}
+                        className=" fm-file-name fm-folder-name fm-up-name"
+                        onClick={() => setFolderId(null)}
                       >
-                        {accessLabel(item.accessLevel)}
+                        <img
+                          className="fm-folder-mark"
+                          src={folderIcon}
+                          alt=""
+                        />
+                        <span className="fm-file-meta">
+                          <strong>..</strong>
+                        </span>
                       </button>
-                    </ContextMenu>
-                    <div className="fm-row-actions">
+                      <span />
+                      <span />
+                      <span />
+                      <div className="fm-row-actions fm-up-actions"></div>
+                    </div>
+                  )}
+                  {visibleItemsPage.length === 0 && (
+                    <EmptyFilesState
+                      onUpload={() => uploadRef.current?.click()}
+                      readOnly={shared}
+                    />
+                  )}
+                  {visibleItemsPage.map((entry) => {
+                    if (entry.type === "folder") {
+                      const item = entry.item;
+                      return (
+                        <ContextMenu
+                          customActions={[
+                            {
+                              key: "open",
+                              label: "Открыть",
+                              icon: folderIcon,
+                              onClick: () => setFolderId(item.id),
+                            },
+                            {
+                              key: "rename",
+                              label: "Переименовать",
+                              onClick: () =>
+                                startRename({ type: "folder", item }),
+                            },
+                            {
+                              key: "share",
+                              label: "Поделиться",
+                              icon: copyIcon,
+                              onClick: () =>
+                                void copyShareUrl(
+                                  `${window.location.origin}/files/gallery/${item.id}`,
+                                ),
+                            },
+                            {
+                              key: "toggle-visibility",
+                              label:
+                                item.accessLevel === 2
+                                  ? "Скрыть галерею"
+                                  : "Открыть галерею",
+                              icon: downloadIcon,
+                              onClick: () => void toggleFolder(item),
+                            },
+                            {
+                              key: "delete",
+                              label: "Удалить",
+                              icon: deleteIcon,
+                              danger: true,
+                              onClick: () => void removeFolder(item),
+                            },
+                          ]}
+                        >
+                          <div
+                            className={`fm-file-row fm-folder-row${dragOverFolderId === item.id ? " is-drop-target" : ""}`}
+                            key={item.id}
+                            onDragOver={(event) => {
+                              if (!event.dataTransfer.types.includes("file-id"))
+                                return;
+                              event.preventDefault();
+                              event.stopPropagation();
+                              event.dataTransfer.dropEffect = "move";
+                              setDragOverFolderId(item.id);
+                            }}
+                            onDragLeave={() => setDragOverFolderId(null)}
+                            onDrop={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              const fileId =
+                                event.dataTransfer.getData("file-id");
+                              if (fileId) void moveFile(fileId, item.id);
+                              else setDragOverFolderId(null);
+                            }}
+                          >
+                            <span className="fm-row-check" />
+                            <div className="fm-file-name fm-folder-name">
+                              <img
+                                className="fm-folder-mark"
+                                src={folderIcon}
+                                alt=""
+                              />
+                              <span className="fm-file-meta">
+                                {renameTarget?.type === "folder" &&
+                                renameTarget.item.id === item.id ? (
+                                  <InlineRenameInput
+                                    value={renameName}
+                                    onChange={setRenameName}
+                                    onConfirm={confirmRename}
+                                    onCancel={() => setRenameTarget(null)}
+                                  />
+                                ) : (
+                                  <button
+                                    type="button"
+                                    className="fm-folder-name"
+                                    onClick={() => setFolderId(item.id)}
+                                  >
+                                    <strong>{item.name}</strong>
+                                  </button>
+                                )}
+                                <small>{item.fileCount} файлов</small>
+                              </span>
+                            </div>
+                            <span className="fm-cell"></span>
+                            <span className="fm-cell">
+                              {new Date(item.createdAt).toLocaleDateString(
+                                "ru-RU",
+                              )}
+                            </span>
+                            <ContextMenu
+                              triggerPlacement="left"
+                              customActions={[
+                                {
+                                  key: "public",
+                                  label: "Сделать публичным",
+                                  disabled: item.accessLevel === 2,
+                                  onClick: () => void setFolderAccess(item, 2),
+                                },
+                                {
+                                  key: "authenticated",
+                                  label: "Только авторизованным",
+                                  disabled: item.accessLevel === 1,
+                                  onClick: () => void setFolderAccess(item, 1),
+                                },
+                                {
+                                  key: "private",
+                                  label: "Сделать приватным",
+                                  disabled: item.accessLevel === 0,
+                                  onClick: () => void setFolderAccess(item, 0),
+                                },
+                              ]}
+                            >
+                              <button
+                                type="button"
+                                className={`btn btn-ghost fm-badge fm-visibility${item.accessLevel === 2 ? " public" : ""}`}
+                                data-context-menu-trigger="true"
+                                aria-label={`Доступ папки ${item.name}`}
+                              >
+                                {accessLabel(item.accessLevel)}
+                              </button>
+                            </ContextMenu>
+                            <div className="fm-row-actions">
+                              <ContextMenu
+                                triggerPlacement="left"
+                                customActions={[
+                                  {
+                                    key: "open",
+                                    label: "Открыть",
+                                    icon: folderIcon,
+                                    onClick: () => setFolderId(item.id),
+                                  },
+                                  {
+                                    key: "rename",
+                                    label: "Переименовать",
+                                    onClick: () =>
+                                      startRename({ type: "folder", item }),
+                                  },
+                                  {
+                                    key: "share",
+                                    label: "Поделиться",
+                                    icon: copyIcon,
+                                    onClick: () =>
+                                      void copyShareUrl(
+                                        `${window.location.origin}/files/gallery/${item.id}`,
+                                      ),
+                                  },
+                                  {
+                                    key: "toggle-visibility",
+                                    label:
+                                      item.accessLevel === 2
+                                        ? "Скрыть галерею"
+                                        : "Открыть галерею",
+                                    icon: downloadIcon,
+                                    onClick: () => void toggleFolder(item),
+                                  },
+                                  {
+                                    key: "delete",
+                                    label: "Удалить",
+                                    icon: deleteIcon,
+                                    danger: true,
+                                    onClick: () => void removeFolder(item),
+                                  },
+                                ]}
+                              >
+                                <button
+                                  type="button"
+                                  className="btn btn-icon fm-more-btn"
+                                  data-context-menu-trigger="true"
+                                  aria-label={`Действия для папки ${item.name}`}
+                                >
+                                  <svg viewBox="0 0 20 20" fill="none">
+                                    <circle
+                                      cx="5"
+                                      cy="10"
+                                      r="1.4"
+                                      fill="currentColor"
+                                    />
+                                    <circle
+                                      cx="10"
+                                      cy="10"
+                                      r="1.4"
+                                      fill="currentColor"
+                                    />
+                                    <circle
+                                      cx="15"
+                                      cy="10"
+                                      r="1.4"
+                                      fill="currentColor"
+                                    />
+                                  </svg>
+                                </button>
+                              </ContextMenu>
+                            </div>
+                          </div>
+                        </ContextMenu>
+                      );
+                    }
+
+                    const file = entry.item;
+                    return (
                       <ContextMenu
-                        triggerPlacement="left"
                         customActions={[
                           {
                             key: "open",
                             label: "Открыть",
-                            icon: folderIcon,
-                            onClick: () => setFolderId(item.id),
+                            icon: downloadIcon,
+                            ...(isVideo(file) || isAudio(file)
+                              ? { onClick: () => void openMedia(file) }
+                              : {
+                                  href: `${window.location.origin}/files/file/${file.id}`,
+                                }),
                           },
                           {
                             key: "rename",
                             label: "Переименовать",
-                            onClick: () => startRename({ type: "folder", item }),
+                            onClick: () =>
+                              startRename({ type: "file", item: file }),
                           },
                           {
                             key: "share",
@@ -867,294 +1149,299 @@ export function FileManagerPage() {
                             icon: copyIcon,
                             onClick: () =>
                               void copyShareUrl(
-                                `${window.location.origin}/files/gallery/${item.id}`,
+                                `${window.location.origin}/files/file/${file.id}`,
                               ),
                           },
                           {
                             key: "toggle-visibility",
-                            label: item.accessLevel === 2
-                              ? "Скрыть галерею"
-                              : "Открыть галерею",
+                            label:
+                              file.accessLevel === 2
+                                ? "Сделать приватным"
+                                : "Сделать публичным",
                             icon: downloadIcon,
-                            onClick: () => void toggleFolder(item),
+                            onClick: () => void toggleFile(file),
                           },
                           {
                             key: "delete",
                             label: "Удалить",
                             icon: deleteIcon,
                             danger: true,
-                            onClick: () => void removeFolder(item),
+                            onClick: () =>
+                              setPendingDelete({ type: "file", item: file }),
                           },
                         ]}
                       >
-                        <button
-                          type="button"
-                          className="btn btn-icon fm-more-btn"
-                          data-context-menu-trigger="true"
-                          aria-label={`Действия для папки ${item.name}`}
+                        <div
+                          className={`fm-file-row${selected.has(file.id) ? " is-selected" : ""}`}
+                          key={file.id}
+                          draggable
+                          onDragStart={(event) => {
+                            event.dataTransfer.setData("file-id", file.id);
+                            event.dataTransfer.effectAllowed = "move";
+                          }}
+                          onDragEnd={() => setDragOverFolderId(null)}
                         >
-                          <svg viewBox="0 0 20 20" fill="none">
-                            <circle cx="5" cy="10" r="1.4" fill="currentColor" />
-                            <circle cx="10" cy="10" r="1.4" fill="currentColor" />
-                            <circle cx="15" cy="10" r="1.4" fill="currentColor" />
-                          </svg>
-                        </button>
+                          <span className="fm-row-check">
+                            <input
+                              type="checkbox"
+                              checked={selected.has(file.id)}
+                              onChange={() => toggleSelected(file.id)}
+                            />
+                          </span>
+
+                          {isImage(file) ? (
+                            <ImageFilePreview
+                              file={file}
+                              isRenaming={
+                                renameTarget?.type === "file" &&
+                                renameTarget.item.id === file.id
+                              }
+                              renameName={renameName}
+                              onRenameChange={setRenameName}
+                              onConfirmRename={confirmRename}
+                              onCancelRename={() => setRenameTarget(null)}
+                            />
+                          ) : isVideo(file) || isAudio(file) ? (
+                            <button
+                              type="button"
+                              className=" fm-file-name fm-image-file-name"
+                              onClick={() => void openMedia(file)}
+                            >
+                              <span className="fm-file-avatar">
+                                {isVideo(file) ? "VID" : "AUD"}
+                              </span>
+                              <span className="fm-file-meta">
+                                {renameTarget?.type === "file" &&
+                                renameTarget.item.id === file.id ? (
+                                  <InlineRenameInput
+                                    value={renameName}
+                                    onChange={setRenameName}
+                                    onConfirm={confirmRename}
+                                    onCancel={() => setRenameTarget(null)}
+                                  />
+                                ) : (
+                                  <strong>{file.fileName}</strong>
+                                )}
+                                <small>
+                                  {file.fileName
+                                    .split(".")
+                                    .pop()
+                                    ?.toUpperCase()}
+                                </small>
+                              </span>
+                            </button>
+                          ) : (
+                            <div className="fm-file-name">
+                              <span className="fm-file-avatar">
+                                {fileInitials(file.fileName)}
+                              </span>
+                              <div className="fm-file-meta">
+                                {renameTarget?.type === "file" &&
+                                renameTarget.item.id === file.id ? (
+                                  <InlineRenameInput
+                                    value={renameName}
+                                    onChange={setRenameName}
+                                    onConfirm={confirmRename}
+                                    onCancel={() => setRenameTarget(null)}
+                                  />
+                                ) : (
+                                  <strong>{file.fileName}</strong>
+                                )}
+                                <small>
+                                  {file.fileName
+                                    .split(".")
+                                    .pop()
+                                    ?.toUpperCase()}
+                                </small>
+                              </div>
+                            </div>
+                          )}
+
+                          <span className="fm-cell">
+                            {formatSize(file.sizeBytes)}
+                          </span>
+                          <span className="fm-cell">
+                            {new Date(file.uploadedAt).toLocaleDateString(
+                              "ru-RU",
+                            )}
+                          </span>
+
+                          <ContextMenu
+                            triggerPlacement="left"
+                            customActions={[
+                              {
+                                key: "public",
+                                label: "Сделать публичным",
+                                disabled: file.accessLevel === 2,
+                                onClick: () => void setFileAccess(file, 2),
+                              },
+                              {
+                                key: "authenticated",
+                                label: "Только авторизованным",
+                                disabled: file.accessLevel === 1,
+                                onClick: () => void setFileAccess(file, 1),
+                              },
+                              {
+                                key: "private",
+                                label: "Сделать приватным",
+                                disabled: file.accessLevel === 0,
+                                onClick: () => void setFileAccess(file, 0),
+                              },
+                            ]}
+                          >
+                            <button
+                              type="button"
+                              className={`btn btn-ghost fm-badge${file.accessLevel === 2 ? " public" : ""}`}
+                              data-context-menu-trigger="true"
+                              aria-label={`Доступ файла ${file.fileName}`}
+                            >
+                              {accessLabel(file.accessLevel)}
+                            </button>
+                          </ContextMenu>
+
+                          <div className="fm-row-actions">
+                            <ContextMenu
+                              triggerPlacement="left"
+                              customActions={[
+                                {
+                                  key: "open",
+                                  label: "Открыть",
+                                  icon: downloadIcon,
+                                  ...(isVideo(file) || isAudio(file)
+                                    ? { onClick: () => openMedia(file) }
+                                    : {
+                                        href: `${window.location.origin}/files/file/${file.id}`,
+                                      }),
+                                },
+                                {
+                                  key: "rename",
+                                  label: "Переименовать",
+                                  onClick: () =>
+                                    startRename({ type: "file", item: file }),
+                                },
+                                {
+                                  key: "share",
+                                  label: "Поделиться",
+                                  icon: copyIcon,
+                                  onClick: () =>
+                                    void copyShareUrl(
+                                      `${window.location.origin}/files/file/${file.id}`,
+                                    ),
+                                },
+                                {
+                                  key: "toggle-visibility",
+                                  label:
+                                    file.accessLevel === 2
+                                      ? "Сделать приватным"
+                                      : "Сделать публичным",
+                                  icon: downloadIcon,
+                                  onClick: () => void toggleFile(file),
+                                },
+                                {
+                                  key: "delete",
+                                  label: "Удалить",
+                                  icon: deleteIcon,
+                                  danger: true,
+                                  onClick: () =>
+                                    setPendingDelete({
+                                      type: "file",
+                                      item: file,
+                                    }),
+                                },
+                              ]}
+                            >
+                              <button
+                                type="button"
+                                className="btn btn-icon fm-more-btn"
+                                data-context-menu-trigger="true"
+                                aria-label={`Действия для ${file.fileName}`}
+                              >
+                                <svg viewBox="0 0 20 20" fill="none">
+                                  <circle
+                                    cx="5"
+                                    cy="10"
+                                    r="1.4"
+                                    fill="currentColor"
+                                  />
+                                  <circle
+                                    cx="10"
+                                    cy="10"
+                                    r="1.4"
+                                    fill="currentColor"
+                                  />
+                                  <circle
+                                    cx="15"
+                                    cy="10"
+                                    r="1.4"
+                                    fill="currentColor"
+                                  />
+                                </svg>
+                              </button>
+                            </ContextMenu>
+                          </div>
+                        </div>
                       </ContextMenu>
-                    </div>
-                    </div>
-                  </ContextMenu>
-                );
-                  }
-
-                  const file = entry.item;
-                  return (
-                <ContextMenu
-                  customActions={[
-                    {
-                      key: "open",
-                      label: "Открыть",
-                      icon: downloadIcon,
-                      ...(isVideo(file) || isAudio(file)
-                        ? { onClick: () => void openMedia(file) }
-                        : { href: `${window.location.origin}/files/file/${file.id}` }),
-                    },
-                    { key: "rename", label: "Переименовать", onClick: () => startRename({ type: "file", item: file }) },
-                    { key: "share", label: "Поделиться", icon: copyIcon, onClick: () => void copyShareUrl(`${window.location.origin}/files/file/${file.id}`) },
-                    { key: "toggle-visibility", label: file.accessLevel === 2 ? "Сделать приватным" : "Сделать публичным", icon: downloadIcon, onClick: () => void toggleFile(file) },
-                    { key: "delete", label: "Удалить", icon: deleteIcon, danger: true, onClick: () => setPendingDelete({ type: "file", item: file }) },
-                  ]}
-                >
-                  <div
-                    className={`fm-file-row${selected.has(file.id) ? " is-selected" : ""}`}
-                    key={file.id}
-                    draggable
-                    onDragStart={(event) => {
-                      event.dataTransfer.setData("file-id", file.id);
-                      event.dataTransfer.effectAllowed = "move";
-                    }}
-                    onDragEnd={() => setDragOverFolderId(null)}
-                  >
-                  <span className="fm-row-check">
-                    <input
-                      type="checkbox"
-                      checked={selected.has(file.id)}
-                      onChange={() => toggleSelected(file.id)}
-                    />
-                  </span>
-
-                  {isImage(file) ? (
-                    <ImageFilePreview
-                      file={file}
-                      isRenaming={renameTarget?.type === "file" && renameTarget.item.id === file.id}
-                      renameName={renameName}
-                      onRenameChange={setRenameName}
-                      onConfirmRename={confirmRename}
-                      onCancelRename={() => setRenameTarget(null)}
-                    />
-                  ) : isVideo(file) || isAudio(file) ? (
-                    <button
-                      type="button"
-                      className=" fm-file-name fm-image-file-name"
-                      onClick={() => void openMedia(file)}
-                    >
-                      <span className="fm-file-avatar">
-                        {isVideo(file) ? "VID" : "AUD"}
-                      </span>
-                      <span className="fm-file-meta">
-                        {renameTarget?.type === "file" && renameTarget.item.id === file.id ? (
-                          <InlineRenameInput
-                            value={renameName}
-                            onChange={setRenameName}
-                            onConfirm={confirmRename}
-                            onCancel={() => setRenameTarget(null)}
-                          />
-                        ) : (
-                          <strong>{file.fileName}</strong>
-                        )}
-                        <small>
-                          {file.fileName.split(".").pop()?.toUpperCase()}
-                        </small>
-                      </span>
-                    </button>
-                  ) : (
-                    <div className="fm-file-name">
-                      <span className="fm-file-avatar">
-                        {fileInitials(file.fileName)}
-                      </span>
-                      <div className="fm-file-meta">
-                        {renameTarget?.type === "file" && renameTarget.item.id === file.id ? (
-                          <InlineRenameInput
-                            value={renameName}
-                            onChange={setRenameName}
-                            onConfirm={confirmRename}
-                            onCancel={() => setRenameTarget(null)}
-                          />
-                        ) : (
-                          <strong>{file.fileName}</strong>
-                        )}
-                        <small>
-                          {file.fileName.split(".").pop()?.toUpperCase()}
-                        </small>
-                      </div>
-                    </div>
-                  )}
-
-                  <span className="fm-cell">{formatSize(file.sizeBytes)}</span>
-                  <span className="fm-cell">
-                    {new Date(file.uploadedAt).toLocaleDateString("ru-RU")}
-                  </span>
-
-                  <ContextMenu
-                    triggerPlacement="left"
-                    customActions={[
-                      {
-                        key: "public",
-                        label: "Сделать публичным",
-                        disabled: file.accessLevel === 2,
-                        onClick: () => void setFileAccess(file, 2),
-                      },
-                      {
-                        key: "authenticated",
-                        label: "Только авторизованным",
-                        disabled: file.accessLevel === 1,
-                        onClick: () => void setFileAccess(file, 1),
-                      },
-                      {
-                        key: "private",
-                        label: "Сделать приватным",
-                        disabled: file.accessLevel === 0,
-                        onClick: () => void setFileAccess(file, 0),
-                      },
-                    ]}
-                  >
-                    <button
-                      type="button"
-                      className={`btn btn-ghost fm-badge${file.accessLevel === 2 ? " public" : ""}`}
-                      data-context-menu-trigger="true"
-                      aria-label={`Доступ файла ${file.fileName}`}
-                    >
-                      {accessLabel(file.accessLevel)}
-                    </button>
-                  </ContextMenu>
-
-                  <div className="fm-row-actions">
-                    <ContextMenu
-                      triggerPlacement="left"
-                      customActions={[
-                        {
-                          key: "open",
-                          label: "Открыть",
-                          icon: downloadIcon,
-                          ...(isVideo(file) || isAudio(file)
-                            ? { onClick: () => openMedia(file) }
-                            : { href: `${window.location.origin}/files/file/${file.id}` }),
-                        },
-                        {
-                          key: "rename",
-                          label: "Переименовать",
-                          onClick: () => startRename({ type: "file", item: file }),
-                        },
-                        {
-                          key: "share",
-                          label: "Поделиться",
-                          icon: copyIcon,
-                          onClick: () =>
-                            void copyShareUrl(
-                              `${window.location.origin}/files/file/${file.id}`,
-                            ),
-                        },
-                        {
-                          key: "toggle-visibility",
-                          label: file.accessLevel === 2 ? "Сделать приватным" : "Сделать публичным",
-                          icon: downloadIcon,
-                          onClick: () => void toggleFile(file),
-                        },
-                        {
-                          key: "delete",
-                          label: "Удалить",
-                          icon: deleteIcon,
-                          danger: true,
-                          onClick: () =>
-                            setPendingDelete({ type: "file", item: file }),
-                        },
-                      ]}
-                    >
-                      <button
-                        type="button"
-                        className="btn btn-icon fm-more-btn"
-                        data-context-menu-trigger="true"
-                        aria-label={`Действия для ${file.fileName}`}
-                      >
-                        <svg viewBox="0 0 20 20" fill="none">
-                          <circle cx="5" cy="10" r="1.4" fill="currentColor" />
-                          <circle cx="10" cy="10" r="1.4" fill="currentColor" />
-                          <circle cx="15" cy="10" r="1.4" fill="currentColor" />
-                        </svg>
-                      </button>
-                    </ContextMenu>
-                  </div>
-                  </div>
-                </ContextMenu>
-                  );
-                })}
-              </>
-            )}
-          </div>
-
-          {/* ---------- Footer: "Showing X-Y of Z" + numbered pagination ---------- */}
-          <div className="fm-table-footer">
-            <span className="fm-table-footer-text">
-              {visibleItems.length === 0
-                ? "Файлы не найдены"
-                : `Показано ${(page - 1) * PAGE_SIZE + 1}-${Math.min(page * PAGE_SIZE, visibleItems.length)} из ${visibleItems.length}`}
-            </span>
-            <div className="fm-pagination">
-              <button
-                className="btn btn-ghost btn-sm fm-page-nav"
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page === 1}
-              >
-                Назад
-              </button>
-              {Array.from({ length: pageCount }, (_, i) => i + 1)
-                .filter(
-                  (n) => n === 1 || n === pageCount || Math.abs(n - page) <= 1,
-                )
-                .reduce<(number | "ellipsis")[]>((acc, n) => {
-                  if (
-                    acc.length > 0 &&
-                    acc[acc.length - 1] !== "ellipsis" &&
-                    (n as number) - (acc[acc.length - 1] as number) > 1
-                  )
-                    acc.push("ellipsis");
-                  acc.push(n);
-                  return acc;
-                }, [])
-                .map((n, idx) =>
-                  n === "ellipsis" ? (
-                    <span className="fm-page-ellipsis" key={`e${idx}`}>
-                      …
-                    </span>
-                  ) : (
-                    <button
-                      className={`btn btn-ghost fm-page-btn${page === n ? " is-active" : ""}`}
-                      key={n}
-                      onClick={() => setPage(n)}
-                    >
-                      {n}
-                    </button>
-                  ),
-                )}
-              <button
-                className="btn btn-ghost btn-sm fm-page-nav"
-                onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
-                disabled={page === pageCount}
-              >
-                Далее
-              </button>
+                    );
+                  })}
+                </>
+              )}
             </div>
-          </div>
-        </section>
+
+            {/* ---------- Footer: "Showing X-Y of Z" + numbered pagination ---------- */}
+            <div className="fm-table-footer">
+              <span className="fm-table-footer-text">
+                {visibleItems.length === 0
+                  ? "Файлы не найдены"
+                  : `Показано ${(page - 1) * PAGE_SIZE + 1}-${Math.min(page * PAGE_SIZE, visibleItems.length)} из ${visibleItems.length}`}
+              </span>
+              <div className="fm-pagination">
+                <button
+                  className="btn btn-ghost btn-sm fm-page-nav"
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                >
+                  Назад
+                </button>
+                {Array.from({ length: pageCount }, (_, i) => i + 1)
+                  .filter(
+                    (n) =>
+                      n === 1 || n === pageCount || Math.abs(n - page) <= 1,
+                  )
+                  .reduce<(number | "ellipsis")[]>((acc, n) => {
+                    if (
+                      acc.length > 0 &&
+                      acc[acc.length - 1] !== "ellipsis" &&
+                      (n as number) - (acc[acc.length - 1] as number) > 1
+                    )
+                      acc.push("ellipsis");
+                    acc.push(n);
+                    return acc;
+                  }, [])
+                  .map((n, idx) =>
+                    n === "ellipsis" ? (
+                      <span className="fm-page-ellipsis" key={`e${idx}`}>
+                        …
+                      </span>
+                    ) : (
+                      <button
+                        className={`btn btn-ghost fm-page-btn${page === n ? " is-active" : ""}`}
+                        key={n}
+                        onClick={() => setPage(n)}
+                      >
+                        {n}
+                      </button>
+                    ),
+                  )}
+                <button
+                  className="btn btn-ghost btn-sm fm-page-nav"
+                  onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+                  disabled={page === pageCount}
+                >
+                  Далее
+                </button>
+              </div>
+            </div>
+          </section>
         </main>
       </ContextMenu>
 
@@ -1189,7 +1476,12 @@ export function FileManagerPage() {
 
       {uploadProgress && (
         <div className="fm-modal-backdrop fm-upload-backdrop">
-          <div className="fm-modal fm-upload-modal" role="dialog" aria-modal="true" aria-labelledby="upload-progress-title">
+          <div
+            className="fm-modal fm-upload-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="upload-progress-title"
+          >
             <h2 id="upload-progress-title">Загрузка файлов</h2>
             <p className="fm-upload-status">
               {uploadProgress.completed} из {uploadProgress.total} загружено
@@ -1197,10 +1489,18 @@ export function FileManagerPage() {
             <p className="fm-upload-file" title={uploadProgress.currentFile}>
               {uploadProgress.currentFile}
             </p>
-            <div className="fm-upload-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={uploadProgress.percent}>
+            <div
+              className="fm-upload-progress"
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={uploadProgress.percent}
+            >
               <span style={{ width: `${uploadProgress.percent}%` }} />
             </div>
-            <strong className="fm-upload-percent">{uploadProgress.percent}%</strong>
+            <strong className="fm-upload-percent">
+              {uploadProgress.percent}%
+            </strong>
           </div>
         </div>
       )}
