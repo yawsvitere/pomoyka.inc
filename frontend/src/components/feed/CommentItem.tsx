@@ -1,5 +1,6 @@
 import type { Comment } from "../../api/types";
 import { AvatarMedia } from "../ui/AvatarMedia";
+import { getBrowserFileUrl } from "../../utils/fileUrl";
 
 interface CommentItemProps {
   comment: Comment;
@@ -12,7 +13,7 @@ export function CommentItem({ comment, onLike }: CommentItemProps) {
       {comment.author.avatarUrl ? (
         <AvatarMedia
           className="comment-avatar"
-          src={`${import.meta.env.VITE_API_URL}${comment.author.avatarUrl}`}
+          src={getBrowserFileUrl(comment.author.avatarUrl)}
           alt=""
         />
       ) : (
@@ -22,7 +23,9 @@ export function CommentItem({ comment, onLike }: CommentItemProps) {
       )}
       <div className="comment-content">
         <div>
-          <strong style={{ color: comment.author.nicknameColor ?? '#4f46e5' }}>{comment.author.displayName}</strong>
+          <strong style={{ color: comment.author.nicknameColor ?? "#4f46e5" }}>
+            {comment.author.displayName}
+          </strong>
           <time>
             {new Date(comment.createdAt).toLocaleTimeString([], {
               hour: "2-digit",

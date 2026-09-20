@@ -31,7 +31,11 @@ const navigationItems = [
   { label: "Пинтерест", path: "/pinterest", icon: storageIcon },
 ];
 
-export function NavigationSidebar() {
+export function NavigationSidebar({
+  onWelcomeOpen,
+}: {
+  onWelcomeOpen: () => void;
+}) {
   const { logout } = useAuth();
 
   return (
@@ -100,7 +104,16 @@ export function NavigationSidebar() {
             github
           </a>
         </div>
-        <Link className="navigation-sidebar-logo" to="/" aria-label="На главную">
+        <div className="navigation-sidebar-footer-row">
+          <button type="button" onClick={onWelcomeOpen}>
+            о приложении
+          </button>
+        </div>
+        <Link
+          className="navigation-sidebar-logo"
+          to="/"
+          aria-label="На главную"
+        >
           <span>помойка.inc</span>
         </Link>
       </div>

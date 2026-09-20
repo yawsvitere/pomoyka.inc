@@ -8,6 +8,7 @@ import archiveIcon from "../../assets/icons/archive.svg";
 import pencilIcon from "../../assets/icons/pencil.svg";
 import storageIcon from "../../assets/icons/storage.svg";
 import { AvatarMedia } from "../ui/AvatarMedia";
+import { getBrowserFileUrl } from "../../utils/fileUrl";
 
 function isAdmin() {
   const token = localStorage.getItem("token");
@@ -34,13 +35,16 @@ const navigationItems = [
   { label: "Пинтерест", path: "/pinterest", icon: storageIcon },
 ];
 
-export function MobileHamburgerMenu() {
+export function MobileHamburgerMenu({
+  onWelcomeOpen,
+}: {
+  onWelcomeOpen: () => void;
+}) {
   const { user, logout } = useAuth();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isMenuVisible, setIsMenuVisible] = useState(false);
   const toggleLockRef = useRef<number | null>(null);
   const closeTimerRef = useRef<number | null>(null);
-  const apiUrl = import.meta.env.VITE_API_URL ?? "http://localhost:5000";
   const profileUrl = `/profile/${encodeURIComponent(user?.displayName ?? "")}`;
 
   useEffect(() => {
@@ -105,25 +109,39 @@ export function MobileHamburgerMenu() {
             <div className="mobile-menu-header">
               <div className="mobile-menu-user-info">
                 {user?.avatarUrl ? (
-                  <AvatarMedia className="mobile-menu-avatar" src={`${apiUrl}${user.avatarUrl}`} alt="" />
+                  <AvatarMedia
+                    className="mobile-menu-avatar"
+                    src={getBrowserFileUrl(user.avatarUrl)}
+                    alt=""
+                  />
                 ) : (
                   <span className="mobile-menu-avatar mobile-menu-avatar-fallback">
                     {user?.displayName?.charAt(0).toUpperCase()}
                   </span>
                 )}
                 <div>
-                  <strong style={{ color: user?.nicknameColor ?? "#f5f5f5" }}>{user?.displayName}</strong>
+                  <strong style={{ color: user?.nicknameColor ?? "#f5f5f5" }}>
+                    {user?.displayName}
+                  </strong>
                   <p>{user?.email}</p>
                 </div>
               </div>
             </div>
 
             <div className="mobile-menu-section">
-              <Link to={profileUrl} className="mobile-menu-item" onClick={handleNavigation}>
+              <Link
+                to={profileUrl}
+                className="mobile-menu-item"
+                onClick={handleNavigation}
+              >
                 <img src={profileIcon} alt="" aria-hidden="true" />
                 <span>Профиль</span>
               </Link>
-              <Link to="/settings" className="mobile-menu-item" onClick={handleNavigation}>
+              <Link
+                to="/settings"
+                className="mobile-menu-item"
+                onClick={handleNavigation}
+              >
                 <img src={settingsIcon} alt="" aria-hidden="true" />
                 <span>Настройки</span>
               </Link>
@@ -131,14 +149,26 @@ export function MobileHamburgerMenu() {
 
             <div className="mobile-menu-section">
               {navigationItems.map((item) => (
-                <Link key={item.path} to={item.path} className="mobile-menu-item" onClick={handleNavigation}>
+                <Link
+                  key={item.path}
+                  to={item.path}
+                  className="mobile-menu-item"
+                  onClick={handleNavigation}
+                >
                   <img src={item.icon} alt="" aria-hidden="true" />
                   <span>{item.label}</span>
                 </Link>
               ))}
               {isAdmin() && (
-                <Link to="/admin" className="mobile-menu-item" onClick={handleNavigation}>
-                  <span className="mobile-menu-item-dot" aria-hidden="true"></span>
+                <Link
+                  to="/admin"
+                  className="mobile-menu-item"
+                  onClick={handleNavigation}
+                >
+                  <span
+                    className="mobile-menu-item-dot"
+                    aria-hidden="true"
+                  ></span>
                   <span>Админка</span>
                 </Link>
               )}
@@ -173,11 +203,24 @@ export function MobileHamburgerMenu() {
                   выйти
                 </button>
                 <span aria-hidden="true">/</span>
-                <a href="https://github.com/yawsvitere/pomoyka.inc" target="_blank" rel="noreferrer">
+                <a
+                  href="https://github.com/yawsvitere/pomoyka.inc"
+                  target="_blank"
+                  rel="noreferrer"
+                >
                   github
                 </a>
               </div>
-              <Link className="mobile-menu-footer-logo" to="/" onClick={handleNavigation}>
+              <div className="mobile-menu-footer-row">
+                <button type="button" onClick={onWelcomeOpen}>
+                  о приложении
+                </button>
+              </div>
+              <Link
+                className="mobile-menu-footer-logo"
+                to="/"
+                onClick={handleNavigation}
+              >
                 помойка.inc
               </Link>
             </footer>

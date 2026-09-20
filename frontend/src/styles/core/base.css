@@ -43,6 +43,16 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
+.avatar-media-fallback {
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: var(--color-avatar-bg);
+  color: var(--color-avatar-text);
+  font-size: 11px;
+  font-weight: 700;
+}
+
 @supports (-webkit-touch-callout: none) {
   html,
   body {
@@ -53,7 +63,7 @@ body {
   }
 }
 
-input[type='checkbox'] {
+input[type="checkbox"] {
   width: 33px;
   height: 18px;
   margin: 0;
@@ -61,28 +71,38 @@ input[type='checkbox'] {
   border: 0;
   border-radius: var(--radius-pill);
   background-color: var(--color-border);
-  background-image: radial-gradient(circle at 9px 9px, var(--color-text) 0 8px, transparent 8.5px);
+  background-image: radial-gradient(
+    circle at 9px 9px,
+    var(--color-text) 0 8px,
+    transparent 8.5px
+  );
   cursor: pointer;
   flex: 0 0 33px;
-  transition: background-color 140ms ease, background-position 140ms ease;
+  transition:
+    background-color 140ms ease,
+    background-position 140ms ease;
 }
 
-input[type='checkbox']:checked {
+input[type="checkbox"]:checked {
   background-color: var(--color-surface-hover);
-  background-image: radial-gradient(circle at 24px 9px, var(--color-text) 0 8px, transparent 8.5px);
+  background-image: radial-gradient(
+    circle at 24px 9px,
+    var(--color-text) 0 8px,
+    transparent 8.5px
+  );
 }
 
-input[type='checkbox']:focus-visible {
+input[type="checkbox"]:focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
 }
 
-input[type='checkbox']:disabled {
+input[type="checkbox"]:disabled {
   cursor: not-allowed;
   opacity: 0.5;
 }
 
-input[type='checkbox'].checkbox-square {
+input[type="checkbox"].checkbox-square {
   width: 18px;
   height: 18px;
   flex: 0 0 18px;
@@ -92,7 +112,7 @@ input[type='checkbox'].checkbox-square {
   border: 1.5px solid var(--color-border-strong);
 }
 
-input[type='checkbox'].checkbox-square:checked {
+input[type="checkbox"].checkbox-square:checked {
   background-color: var(--color-text);
   border-color: var(--color-text);
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='M3.5 8.2L6.3 11l6-6.4' stroke='%23181818' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");

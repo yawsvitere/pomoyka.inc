@@ -4,8 +4,20 @@
   flex-direction: column;
   width: 100%;
   min-height: 0;
+  background: var(--color-bg);
   font-family: var(--font-sans);
   color: var(--color-text);
+}
+
+@keyframes calendar-layer-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .calendar-nav {
@@ -14,6 +26,7 @@
   justify-content: center;
   gap: 20px;
   padding: 4px 0 20px;
+  animation: calendar-layer-in 160ms ease-out both;
 }
 
 .calendar-nav-btn {
@@ -85,6 +98,7 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
+  animation: calendar-layer-in 160ms ease-out 40ms both;
 }
 
 .calendar-cell {
@@ -100,7 +114,16 @@
   text-align: left;
   color: inherit;
   cursor: default;
+  animation: calendar-layer-in 180ms ease-out both;
   transition: background-color 140ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .calendar-nav,
+  .calendar-weekday,
+  .calendar-cell {
+    animation: none;
+  }
 }
 
 .calendar-cell.is-outside {
@@ -137,7 +160,9 @@
   font-weight: 600;
   color: var(--color-text);
   align-self: flex-start;
-  transition: background-color 140ms ease, color 140ms ease;
+  transition:
+    background-color 140ms ease,
+    color 140ms ease;
 }
 
 .calendar-cell.is-today .calendar-cell-daynum {

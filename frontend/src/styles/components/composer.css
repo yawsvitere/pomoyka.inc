@@ -5,10 +5,10 @@
   left: max(16px, calc(50% - 360px));
   z-index: 20;
 
---composer-accent: var(--color-accent);
---composer-accent-soft: rgba(232, 232, 232, 0.1);
---composer-accent-strong: var(--color-text);
---composer-accent-ink: var(--color-bg);
+  --composer-accent: var(--color-accent);
+  --composer-accent-soft: rgba(232, 232, 232, 0.1);
+  --composer-accent-strong: var(--color-text);
+  --composer-accent-ink: var(--color-bg);
 }
 
 .composer-dock > .feed-heading {
@@ -32,7 +32,9 @@
   border-radius: var(--radius-md);
   background: var(--color-surface-deep);
   box-shadow: 0 8px 24px var(--color-shadow);
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
 }
 
 .composer::before {
@@ -49,7 +51,9 @@
 
 .composer:focus-within {
   border-color: var(--composer-accent);
-  box-shadow: 0 8px 28px var(--color-shadow), 0 0 0 3px var(--composer-accent-soft);
+  box-shadow:
+    0 8px 28px var(--color-shadow),
+    0 0 0 3px var(--composer-accent-soft);
 }
 
 .composer:focus-within::before {
@@ -59,7 +63,9 @@
 .composer.is-drag-active {
   border-color: var(--composer-accent);
   border-style: dashed;
-  box-shadow: 0 8px 28px var(--color-shadow), 0 0 0 3px var(--composer-accent-soft);
+  box-shadow:
+    0 8px 28px var(--color-shadow),
+    0 0 0 3px var(--composer-accent-soft);
 }
 
 .textarea-composer {
@@ -100,7 +106,10 @@
   background: transparent;
   color: var(--color-text-dim);
   cursor: pointer;
-  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    color 0.15s ease,
+    background 0.15s ease;
 }
 
 .composer-footer .btn-secondary:hover {
@@ -120,12 +129,19 @@
   padding: 0 12px;
   border: none;
   border-radius: 999px;
-  background: linear-gradient(180deg, var(--composer-accent-strong), var(--composer-accent));
+  background: linear-gradient(
+    180deg,
+    var(--composer-accent-strong),
+    var(--composer-accent)
+  );
   color: var(--composer-accent-ink);
   font-weight: 600;
   letter-spacing: 0.01em;
   cursor: pointer;
-  transition: transform 0.12s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+  transition:
+    transform 0.12s ease,
+    box-shadow 0.15s ease,
+    opacity 0.15s ease;
 }
 
 .composer-footer .btn-primary:hover:not(:disabled) {
@@ -184,7 +200,9 @@
   background: transparent;
   color: var(--color-text-dim);
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
 }
 
 .composer-file-chip button:hover {
@@ -200,7 +218,7 @@
 @media (max-width: 700px) {
   .composer-dock {
     right: 8px;
-    bottom: 8px;
+    bottom: calc(76px + env(safe-area-inset-bottom));
     left: 8px;
   }
 

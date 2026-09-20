@@ -1,5 +1,4 @@
 .article-editor,
-
 .article-reader {
   margin: 0 auto;
   padding: 0 20px 0px;
@@ -7,6 +6,50 @@
   max-width: 960px;
   padding-top: 64px;
 }
+
+@keyframes article-layer-in {
+  from {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.article-reader {
+  animation: article-layer-in 220ms ease-out both;
+}
+
+.article-reader > .article-kicker,
+.article-reader > h1 {
+  animation: article-layer-in 180ms ease-out 40ms both;
+}
+
+.article-reader > .article-share-row {
+  animation: article-layer-in 180ms ease-out 70ms both;
+}
+
+.article-reader > .article-byline {
+  animation: article-layer-in 180ms ease-out 100ms both;
+}
+
+.article-reader > .article-content {
+  animation: article-layer-in 220ms ease-out 130ms both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .article-reader,
+  .article-reader > .article-kicker,
+  .article-reader > h1,
+  .article-reader > .article-share-row,
+  .article-reader > .article-byline,
+  .article-reader > .article-content {
+    animation: none;
+  }
+}
+
 .article-back {
   color: var(--color-text-faint);
   font-size: 13px;
@@ -46,7 +89,9 @@
   outline: 0;
   background: transparent;
   color: var(--color-text-secondary);
-  font: 400 16px/1.4 "Geist", sans-serif;
+  font:
+    400 16px/1.4 "Geist",
+    sans-serif;
 }
 .article-description-input::placeholder {
   color: var(--color-text-faint);
@@ -202,7 +247,6 @@
   margin: 12px 0;
   border-radius: 8px;
   object-fit: contain;
-
 }
 .article-content iframe {
   display: block;
@@ -227,11 +271,8 @@
 }
 
 .rte-shell {
-
   overflow: hidden;
 }
-
-
 
 .rte-canvas {
   position: relative;
@@ -537,8 +578,8 @@
   .article-reader {
     padding: 0;
   }
-  .article-kicker{
-   margin: 0;
+  .article-kicker {
+    margin: 0;
   }
   .article-title-input,
   .article-reader h1 {

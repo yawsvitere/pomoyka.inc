@@ -95,8 +95,6 @@ export function Calendar({
 
   return (
     <div className="calendar">
-     
-
       <div className="calendar-nav">
         <button
           type="button"
@@ -153,10 +151,14 @@ export function Calendar({
                 ]
                   .filter(Boolean)
                   .join(" ")}
+                style={{ animationDelay: `${70 + index * 10}ms` }}
                 onClick={() => clickable && onDayClick?.(cell.day)}
                 disabled={!clickable}
               >
-                <span className="calendar-cell-daynum" data-weekday-short={weekdayLabel}>
+                <span
+                  className="calendar-cell-daynum"
+                  data-weekday-short={weekdayLabel}
+                >
                   {cell.day}
                 </span>
                 {visibleChips.length > 0 && (

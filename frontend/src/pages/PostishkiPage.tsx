@@ -78,7 +78,10 @@ function PostishkiCard({
       onEdit={() => navigate(`/posts/${post.id}/edit`)}
       onDelete={onDelete}
     >
-      <article className={`postishki-card postishki-card-${index % 6}`}>
+      <article
+        className={`postishki-card postishki-card-${index % 6}`}
+        style={{ animationDelay: `${80 + index * 35}ms` }}
+      >
         <Link className="postishki-card-cover" to={`/posts/${post.id}`}>
           {coverUrl ? (
             <img src={coverUrl} alt="" />

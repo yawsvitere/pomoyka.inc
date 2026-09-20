@@ -6,6 +6,7 @@
   margin: 0;
   padding: 64px 16px 0px;
   color: var(--color-accent);
+  background: var(--color-bg);
   font-family: var(--font-sans);
   box-sizing: border-box;
 }

@@ -2,6 +2,18 @@
   max-width: 2000px;
   margin: 0 auto;
   padding: 28px 24px 72px;
+  animation: postishki-layer-in 220ms ease-out both;
+}
+
+@keyframes postishki-layer-in {
+  from {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .postishki-page-loading {
@@ -13,12 +25,14 @@
 
 .postishki-header {
   padding-top: 64px;
+  animation: postishki-layer-in 180ms ease-out 40ms both;
 }
 
 .postishki-list {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 18px;
+  animation: postishki-layer-in 180ms ease-out 60ms both;
 }
 
 .postishki-card {
@@ -33,6 +47,7 @@
     border-color 180ms ease,
     transform 180ms ease;
   max-height: 450px;
+  animation: postishki-layer-in 240ms ease-out both;
 }
 
 .postishki-card:hover {
@@ -180,6 +195,15 @@
 
 .postishki-error {
   color: var(--color-danger);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .postishki-page,
+  .postishki-header,
+  .postishki-list,
+  .postishki-card {
+    animation: none;
+  }
 }
 
 @media (max-width: 800px) {

@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Net.Http.Headers;
+using Amazon.S3;
 using SixLabors.ImageSharp;
 
 namespace Feed.Api.Controllers;
@@ -574,7 +575,7 @@ public class FilesController : ControllerBase
             return BadRequest(new { message = "Можно загружать только изображения и видео" });
 
         var user = await _db.Users.FirstAsync(x => x.Id == userId.Value);
-        if (user.AvatarUrl != null)
+        if (user.AvatarUrl != null && !IsContentAddressedKey(GetAvatarStorageKey(user.AvatarUrl)))
             await _storage.DeleteObjectAsync(GetAvatarStorageKey(user.AvatarUrl));
         user.AvatarUrl = storageKey;
         await _db.SaveChangesAsync();
@@ -647,8 +648,15 @@ public class FilesController : ControllerBase
     {
         var user = await _db.Users.AsNoTracking().FirstOrDefaultAsync(x => x.Id == userId);
         if (user?.AvatarUrl == null) return NotFound();
-        var objectResponse = await _storage.GetObjectAsync(GetAvatarStorageKey(user.AvatarUrl));
-        return File(objectResponse.ResponseStream, objectResponse.Headers.ContentType ?? GetAvatarContentType(user.AvatarUrl));
+        try
+        {
+            var objectResponse = await _storage.GetObjectAsync(GetAvatarStorageKey(user.AvatarUrl));
+            return File(objectResponse.ResponseStream, objectResponse.Headers.ContentType ?? GetAvatarContentType(user.AvatarUrl));
+        }
+        catch (AmazonS3Exception exception) when (exception.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return NotFound();
+        }
     }
 
     [AllowAnonymous]
@@ -657,8 +665,15 @@ public class FilesController : ControllerBase
     {
         var user = await _db.Users.AsNoTracking().FirstOrDefaultAsync(x => x.Id == userId);
         if (user?.BannerUrl == null) return NotFound();
-        var objectResponse = await _storage.GetObjectAsync(user.BannerUrl);
-        return File(objectResponse.ResponseStream, objectResponse.Headers.ContentType ?? "image/jpeg");
+        try
+        {
+            var objectResponse = await _storage.GetObjectAsync(user.BannerUrl);
+            return File(objectResponse.ResponseStream, objectResponse.Headers.ContentType ?? "image/jpeg");
+        }
+        catch (AmazonS3Exception exception) when (exception.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return NotFound();
+        }
     }
 
     private Guid? GetUserId()

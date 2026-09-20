@@ -271,8 +271,10 @@ function PostImageGallery({ files }: { files: Post["files"] }) {
         key={item.file.id}
         style={{
           flex: layout.type === "rows" ? `${item.ratio} 1 0` : undefined,
-          width: layout.type === "mosaic" && !isSingleImage ? "100%" : undefined,
-          height: layout.type === "mosaic" && !isSingleImage ? "100%" : undefined,
+          width:
+            layout.type === "mosaic" && !isSingleImage ? "100%" : undefined,
+          height:
+            layout.type === "mosaic" && !isSingleImage ? "100%" : undefined,
           aspectRatio:
             layout.type === "mosaic" && !isSingleImage ? item.ratio : undefined,
         }}
@@ -382,7 +384,7 @@ function ReactionAvatar({
   return avatarUrl ? (
     <AvatarMedia
       className="reaction-avatar"
-      src={`${import.meta.env.VITE_API_URL}${avatarUrl}`}
+      src={getBrowserFileUrl(avatarUrl)}
       alt=""
     />
   ) : (
@@ -411,7 +413,7 @@ export function PostCard({
   const author = post.author.avatarUrl ? (
     <AvatarMedia
       className="post-avatar"
-      src={`${import.meta.env.VITE_API_URL}${post.author.avatarUrl}`}
+      src={getBrowserFileUrl(post.author.avatarUrl)}
       alt=""
     />
   ) : (
@@ -419,7 +421,7 @@ export function PostCard({
       {post.author.displayName.charAt(0).toUpperCase()}
     </span>
   );
-  const authorColor = post.author.nicknameColor ?? '#4f46e5';
+  const authorColor = post.author.nicknameColor ?? "#4f46e5";
   const imageFiles = post.files.filter((file) =>
     file.contentType.startsWith("image/"),
   );
@@ -511,7 +513,8 @@ export function PostCard({
     ? Boolean(post.title?.trim() || articleText)
     : Boolean(post.text?.trim());
   const isMediaOnly = post.files.length > 0 && !hasPostText && !reactionChips;
-  const isReactionsOnly = post.files.length === 0 && !hasPostText && !!reactionChips;
+  const isReactionsOnly =
+    post.files.length === 0 && !hasPostText && !!reactionChips;
   const isTextOnly = post.files.length === 0 && hasPostText;
 
   return (
@@ -555,7 +558,10 @@ export function PostCard({
                       {post.author.displayName}
                     </Link>
                   ) : (
-                    <span className="post-author" style={{ color: authorColor }}>
+                    <span
+                      className="post-author"
+                      style={{ color: authorColor }}
+                    >
                       {post.author.displayName}
                     </span>
                   )}
@@ -615,8 +621,8 @@ export function PostCard({
                   <div className="article-preview">
                     <h2>{post.title}</h2>
                     <p className="post-text">
-                      {post.blocks?.find((block) => block.type === "text")?.text ??
-                        ""}
+                      {post.blocks?.find((block) => block.type === "text")
+                        ?.text ?? ""}
                     </p>
                     {showArticleLink && (
                       <Link to={`/posts/${post.id}`}>Читать далее →</Link>
@@ -635,7 +641,10 @@ export function PostCard({
             )}
             {reactionsOverlay ?? reactionsInline}
             {post.relatedPostId && (
-              <Link className="post-related-link" to={`/posts/${post.relatedPostId}`}>
+              <Link
+                className="post-related-link"
+                to={`/posts/${post.relatedPostId}`}
+              >
                 Читать постишку →
               </Link>
             )}
