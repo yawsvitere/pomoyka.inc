@@ -178,7 +178,7 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("Frontend", policy =>
     {
-        policy.WithOrigins("http://localhost:5173", "http://192.168.0.15:5173", "https://8002-2a01-ecc0-40-6c0-00-2.ngrok-free.app")
+        policy.WithOrigins("http://localhost:5173", "http://192.168.0.15:5173", "https://33eb-2a01-ecc0-40-6c0-00-2.ngrok-free.app")
             .AllowAnyHeader()
             .AllowAnyMethod()
             .AllowCredentials();

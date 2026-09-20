@@ -606,6 +606,41 @@ public class FilesController : ControllerBase
         return Ok($"/api/files/banner/{userId.Value}");
     }
 
+    [HttpPost("invite-image")]
+    [Consumes("multipart/form-data")]
+    public async Task<ActionResult<string>> UploadInviteImage([FromForm] Guid inviteId, IFormFile file)
+    {
+        var adminId = GetUserId();
+        if (adminId == null) return Unauthorized();
+        if (file.Length == 0 || file.Length > MaxBannerSizeBytes)
+            return BadRequest(new { message = "Изображение инвайта должно быть до 10 МБ" });
+        if (!file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+            return BadRequest(new { message = "Можно загружать только изображения" });
+
+        var invite = await _db.InviteCodes.FirstOrDefaultAsync(x => x.Id == inviteId);
+        if (invite == null)
+            return NotFound(new { message = "Инвайт-код не найден" });
+
+        await using var stream = file.OpenReadStream();
+        var storageKey = await _storage.UploadDeduplicatedObjectAsync(stream, file.ContentType);
+        if (!string.IsNullOrWhiteSpace(invite.ImageUrl) && !IsContentAddressedKey(invite.ImageUrl))
+            await _storage.DeleteObjectAsync(invite.ImageUrl);
+
+        invite.ImageUrl = storageKey;
+        await _db.SaveChangesAsync();
+        return Ok($"/api/files/invite/{invite.Id}/image");
+    }
+
+    [AllowAnonymous]
+    [HttpGet("invite/{inviteId:guid}/image")]
+    public async Task<IActionResult> GetInviteImage(Guid inviteId)
+    {
+        var invite = await _db.InviteCodes.AsNoTracking().FirstOrDefaultAsync(x => x.Id == inviteId);
+        if (invite?.ImageUrl == null) return NotFound();
+        var objectResponse = await _storage.GetObjectAsync(invite.ImageUrl);
+        return File(objectResponse.ResponseStream, objectResponse.Headers.ContentType ?? "image/jpeg");
+    }
+
     [AllowAnonymous]
     [HttpGet("avatar/{userId:guid}")]
     public async Task<IActionResult> GetAvatar(Guid userId)

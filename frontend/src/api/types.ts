@@ -3,6 +3,7 @@ export interface User {
   email: string;
   displayName: string;
   welcomeName?: string | null;
+  welcomeImageUrl?: string | null;
   nicknameColor?: string | null;
   avatarUrl: string | null;
   bannerUrl?: string | null;

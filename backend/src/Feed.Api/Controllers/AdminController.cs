@@ -153,6 +153,7 @@ public class AdminController : ControllerBase
             Id = code.Id,
             Code = code.Code,
             Name = code.Name,
+            ImageUrl = code.ImageUrl == null ? null : $"/api/files/invite/{code.Id}/image",
             CreatedAt = code.CreatedAt,
             ExpiresAt = code.ExpiresAt
         });
@@ -167,6 +168,7 @@ public class AdminController : ControllerBase
             Id = code.Id,
             Code = code.Code,
             Name = code.Name,
+            ImageUrl = code.ImageUrl == null ? null : $"/api/files/invite/{code.Id}/image",
             CreatedAt = code.CreatedAt,
             ExpiresAt = code.ExpiresAt,
             UsedAt = code.UsedAt,

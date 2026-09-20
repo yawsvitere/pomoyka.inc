@@ -97,6 +97,9 @@ public class AuthController : ControllerBase
             WelcomeName = isFirstUser || string.IsNullOrWhiteSpace(invite!.Name)
                 ? request.DisplayName
                 : invite.Name,
+            WelcomeImageUrl = invite == null || string.IsNullOrWhiteSpace(invite.ImageUrl)
+                ? null
+                : $"/api/files/invite/{invite.Id}/image",
             NicknameColor = ValidateNicknameColor(request.NicknameColor) ? request.NicknameColor : "#4f46e5"
         };
 
@@ -378,6 +381,7 @@ public class AuthController : ControllerBase
         WelcomeName = user.WelcomeName,
         NicknameColor = string.IsNullOrWhiteSpace(user.NicknameColor) ? "#4f46e5" : user.NicknameColor,
         AvatarUrl = user.AvatarUrl == null ? null : $"/api/files/avatar/{user.Id}?v={Uri.EscapeDataString(user.AvatarUrl)}",
+        WelcomeImageUrl = user.WelcomeImageUrl,
         BannerUrl = user.BannerUrl == null ? null : $"/api/files/banner/{user.Id}",
         About = user.About,
         HasSeenWelcome = user.HasSeenWelcome,
