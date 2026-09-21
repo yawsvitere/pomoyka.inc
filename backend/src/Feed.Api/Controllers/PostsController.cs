@@ -21,20 +21,20 @@ public class PostsController : ControllerBase
     private readonly AppDbContext _db;
     private readonly IStorageService _storage;
     private readonly IHubContext<FeedHub> _hub;
-    private readonly PomojkaService _pomojkaService;
+    private readonly PomoykaService _pomoykaService;
     private readonly ILogger<PostsController> _logger;
 
     public PostsController(
         AppDbContext db,
         IStorageService storage,
         IHubContext<FeedHub> hub,
-        PomojkaService pomojkaService,
+        PomoykaService pomoykaService,
         ILogger<PostsController> logger)
     {
         _db = db;
         _storage = storage;
         _hub = hub;
-        _pomojkaService = pomojkaService;
+        _pomoykaService = pomoykaService;
         _logger = logger;
     }
 
@@ -49,14 +49,11 @@ public class PostsController : ControllerBase
         if (pageSize < 1)
             pageSize = 20;
 
-        if (pageSize > 100)
-            pageSize = 100;
-
-        var pomojka = await _pomojkaService.GetOrCreateTodaysPomojkaAsync();
+        var pomoyka = await _pomoykaService.GetOrCreateTodaysPomoykaAsync();
 
         var posts = await _db.Posts
             .AsNoTracking()
-            .Where(p => p.PomojkaId == pomojka.Id && !p.IsPostishka)
+            .Where(p => p.PomoykaId == pomoyka.Id && !p.IsPostishka)
             .Include(p => p.Author)
             .Include(p => p.Files)
             .Include(p => p.Blocks)
@@ -143,11 +140,11 @@ public class PostsController : ControllerBase
         if (files.Any(file => file.Length == 0 || file.Length > 500L * 1024 * 1024))
             return BadRequest(new { message = "Файл должен быть размером до 500 МБ" });
 
-        var pomojka = await _pomojkaService.GetOrCreateTodaysPomojkaAsync();
+        var pomoyka = await _pomoykaService.GetOrCreateTodaysPomoykaAsync();
 
         var post = new Post 
         { 
-            PomojkaId = pomojka.Id,
+            PomoykaId = pomoyka.Id,
             AuthorId = userId.Value, 
             Title = title.Trim(), 
             Description = string.IsNullOrWhiteSpace(description) ? null : description.Trim(),
@@ -178,7 +175,7 @@ public class PostsController : ControllerBase
 
         var notification = new Post
         {
-            PomojkaId = pomojka.Id,
+            PomoykaId = pomoyka.Id,
             AuthorId = userId.Value,
             Text = $"{created.Author!.DisplayName} сделал постишку «{post.Title}»",
             RelatedPostId = post.Id
@@ -227,11 +224,11 @@ public class PostsController : ControllerBase
             });
         }
 
-        var pomojka = await _pomojkaService.GetOrCreateTodaysPomojkaAsync();
+        var pomoyka = await _pomoykaService.GetOrCreateTodaysPomoykaAsync();
 
         var post = new Post
         {
-            PomojkaId = pomojka.Id,
+            PomoykaId = pomoyka.Id,
             AuthorId = userId.Value,
             Text = request.Text
         };

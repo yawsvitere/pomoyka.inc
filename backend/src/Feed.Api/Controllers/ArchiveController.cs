@@ -12,16 +12,16 @@ namespace Feed.Api.Controllers;
 [Route("api/archive")]
 public class ArchiveController : ControllerBase
 {
-    private readonly PomojkaService _pomojkaService;
+    private readonly PomoykaService _pomoykaService;
     private readonly IStorageService _storage;
     private readonly ILogger<ArchiveController> _logger;
 
     public ArchiveController(
-        PomojkaService pomojkaService,
+        PomoykaService pomoykaService,
         IStorageService storage,
         ILogger<ArchiveController> logger)
     {
-        _pomojkaService = pomojkaService;
+        _pomoykaService = pomoykaService;
         _storage = storage;
         _logger = logger;
     }
@@ -37,7 +37,7 @@ public class ArchiveController : ControllerBase
         if (month < 1 || month > 12)
             return BadRequest(new { message = "Month must be between 1 and 12" });
 
-        var archiveDays = await _pomojkaService.GetArchiveDaysForMonthAsync(year, month);
+        var archiveDays = await _pomoykaService.GetArchiveDaysForMonthAsync(year, month);
 
         var calendar = new ArchiveCalendarDto
         {
@@ -73,13 +73,13 @@ public class ArchiveController : ControllerBase
         try
         {
             var date = new DateOnly(year, month, day);
-            var archiveDay = await _pomojkaService.GetArchiveDayAsync(date);
+            var archiveDay = await _pomoykaService.GetArchiveDayAsync(date);
 
             if (archiveDay == null)
                 return NotFound(new { message = $"No archive found for {date}" });
 
-            // Получаем посты с пагинацией
-            var (posts, total) = await _pomojkaService.GetArchivedPostsForDayAsync(date, (page - 1) * pageSize, pageSize);
+
+            var (posts, total) = await _pomoykaService.GetArchivedPostsForDayAsync(date, (page - 1) * pageSize, pageSize);
 
             var detail = new ArchiveDayDetailDto
             {
@@ -113,8 +113,7 @@ public class ArchiveController : ControllerBase
     [AllowAnonymous]
     public async Task<ActionResult<ArchivedPostDto>> GetArchivedPost(Guid id)
     {
-        // Для простоты, можно использовать DbContext напрямую здесь
-        // В реальном приложении это должен быть метод в PomojkaService
+
         var app = HttpContext.RequestServices;
         var db = app.GetRequiredService<Feed.Api.Data.AppDbContext>();
 
@@ -215,7 +214,7 @@ public class ArchiveController : ControllerBase
     }
 }
 
-// DTOs for Archive Endpoints
+
 public class ArchiveCalendarDto
 {
     public int Year { get; set; }

@@ -171,7 +171,7 @@ builder.Services.AddScoped<AvatarImageOptimizer>();
 builder.Services.AddScoped<IJwtService, JwtService>();
 builder.Services.AddScoped<InviteCodeService>();
 builder.Services.AddSingleton<AuthAttemptLimiter>();
-builder.Services.AddScoped<PomojkaService>();
+builder.Services.AddScoped<PomoykaService>();
 
 
 builder.Services.AddHostedService<ArchivalBackgroundService>();

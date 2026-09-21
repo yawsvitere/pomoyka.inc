@@ -4,7 +4,6 @@
 
 ASP.NET Core 9 · EF Core 9 · PostgreSQL (Npgsql) · ASP.NET Identity (GUID keys) · JWT bearer · MinIO/S3 · SignalR · Swagger (dev)
 
-
 ## Рантайм
 
 `Program.cs` регистрирует БД, Identity, JWT, storage, сервисы, SignalR, контроллеры. На старте: применяются EF-миграции, гарантируется роль `Admin`, при наличии `ADMIN_EMAIL` назначается ей.
@@ -41,7 +40,7 @@ backend/
 
 **Feed/Posts** — `PostsController`: дневная лента, postishki, статьи, публичные статьи, посты пользователя, создание/удаление, редактирование статей. `CommentsController` — комментарии. `ReactionsController` — лайки.
 
-**Архив** — `PomojkaService` создаёт дневной контейнер и переносит устаревший контент в архив внутри serializable-транзакции. `ArchivalBackgroundService` догоняет пропущенные дни после рестарта и далее работает по расписанию. Архивные файлы переиспользуют storage key — бинарник не копируется.
+**Архив** — `PomoykaService` создаёт дневной контейнер и переносит устаревший контент в архив внутри serializable-транзакции. `ArchivalBackgroundService` догоняет пропущенные дни после рестарта и далее работает по расписанию. Архивные файлы переиспользуют storage key — бинарник не копируется.
 
 **Files** — `FilesController`: presigned uploads, личная библиотека, папки, видимость, метаданные, аватары, баннеры, скачивание. `StorageService` — MinIO через S3 API. `FileMetadataBackfillService` чинит/дозаполняет метаданные. `AvatarImageOptimizer` — обработка изображений.
 

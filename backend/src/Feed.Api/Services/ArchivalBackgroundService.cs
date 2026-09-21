@@ -53,10 +53,9 @@ public class ArchivalBackgroundService : BackgroundService
             using var scope =
                 _serviceProvider.CreateScope();
 
-            var pomojkaService =
+            var pomoykaService =
                 scope.ServiceProvider
-                    .GetRequiredService<PomojkaService>();
-
+                    .GetRequiredService<PomoykaService>();
             var moscowTimeZone =
                 TimeZoneInfo.FindSystemTimeZoneById(
                     "Europe/Moscow");
@@ -70,19 +69,19 @@ public class ArchivalBackgroundService : BackgroundService
                 DateOnly.FromDateTime(nowMoscow);
 
             _logger.LogDebug(
-                "Checking expired Pomojkas. Today: {Date}",
+                "Checking expired Pomoykas. Today: {Date}",
                 today);
 
             var archivedCount =
-                await pomojkaService
-                    .ArchiveAllExpiredPomojkasAsync(
+                await pomoykaService
+                    .ArchiveAllExpiredPomoykasAsync(
                         today,
                         cancellationToken);
 
             if (archivedCount > 0)
             {
                 _logger.LogInformation(
-                    "Archived {Count} expired Pomojka(s)",
+                    "Archived {Count} expired Pomoyka(s)",
                     archivedCount);
             }
         }
@@ -94,7 +93,7 @@ public class ArchivalBackgroundService : BackgroundService
         {
             _logger.LogError(
                 ex,
-                "Error while checking Pomojkas for archival");
+                "Error while checking Pomoykas for archival");
         }
     }
 }

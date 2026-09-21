@@ -19,20 +19,20 @@ public class AdminController : ControllerBase
 {
     private readonly UserManager<AppUser> _userManager;
     private readonly InviteCodeService _inviteCodeService;
-    private readonly PomojkaService _pomojkaService;
+    private readonly PomoykaService _pomoykaService;
     private readonly IHubContext<FeedHub> _feedHub;
     private readonly AppDbContext _db;
 
     public AdminController(
         UserManager<AppUser> userManager,
         InviteCodeService inviteCodeService,
-        PomojkaService pomojkaService,
+        PomoykaService pomoykaService,
         IHubContext<FeedHub> feedHub,
         AppDbContext db)
     {
         _userManager = userManager;
         _inviteCodeService = inviteCodeService;
-        _pomojkaService = pomojkaService;
+        _pomoykaService = pomoykaService;
         _feedHub = feedHub;
         _db = db;
     }
@@ -45,7 +45,7 @@ public class AdminController : ControllerBase
             TimeZoneInfo.FindSystemTimeZoneById("Europe/Moscow"));
         var today = DateOnly.FromDateTime(moscowTime);
 
-        await _pomojkaService.ArchivePomojkaAsync(today);
+        await _pomoykaService.ArchivePomoykaAsync(today);
 
         return Ok(new
         {

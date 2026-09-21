@@ -26,7 +26,7 @@ public class ArchiveDay
     public int ParticipantCount { get; set; }
 
     /// <summary>
-    /// When this archive was created (when the Pomojka was closed).
+    /// When this archive was created (when the Pomoyka was closed).
     /// </summary>
     public DateTime ClosedAt { get; set; } = DateTime.UtcNow;
 
@@ -39,7 +39,7 @@ public class ArchiveDay
 }
 
 /// <summary>
-/// An archived post - a snapshot of a post after the Pomojka was closed.
+/// An archived post - a snapshot of a post after the Pomoyka was closed.
 /// This is read-only and cannot be modified.
 /// </summary>
 public class ArchivedPost

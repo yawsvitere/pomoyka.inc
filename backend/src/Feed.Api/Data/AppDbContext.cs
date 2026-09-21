@@ -9,7 +9,7 @@ public class AppDbContext : IdentityDbContext<AppUser, IdentityRole<Guid>, Guid>
 {
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
 
-    public DbSet<Pomojka> Pomojkas => Set<Pomojka>();
+    public DbSet<Pomoyka> Pomoykas => Set<Pomoyka>();
     public DbSet<Post> Posts => Set<Post>();
     public DbSet<PostFile> PostFiles => Set<PostFile>();
     public DbSet<PostBlock> PostBlocks => Set<PostBlock>();
@@ -77,9 +77,10 @@ public class AppDbContext : IdentityDbContext<AppUser, IdentityRole<Guid>, Guid>
 
         builder.Entity<Post>(e =>
         {
-            e.HasOne(p => p.Pomojka)
+            e.Property(x => x.PomoykaId).HasColumnName("PomojkaId");
+            e.HasOne(p => p.Pomoyka)
                 .WithMany(p => p.Posts)
-                .HasForeignKey(p => p.PomojkaId)
+                .HasForeignKey(p => p.PomoykaId)
                 .OnDelete(DeleteBehavior.Cascade);
 
             e.HasOne(p => p.Author)
@@ -104,11 +105,11 @@ public class AppDbContext : IdentityDbContext<AppUser, IdentityRole<Guid>, Guid>
                 .HasDefaultValue(PostAccessLevel.Authenticated)
                 .HasSentinel(PostAccessLevel.Authenticated);
             e.HasIndex(x => new { x.IsPostishka, x.CreatedAt });
-            e.HasIndex(x => new { x.PomojkaId, x.IsPostishka, x.CreatedAt });
+            e.HasIndex(x => new { x.PomoykaId, x.IsPostishka, x.CreatedAt });
             e.HasIndex(x => new { x.IsPostishka, x.AccessLevel, x.CreatedAt });
             e.HasIndex(x => new { x.AuthorId, x.IsPostishka, x.CreatedAt });
             e.Navigation(p => p.Comments).UsePropertyAccessMode(PropertyAccessMode.Property);
-            e.HasIndex(x => new { x.PomojkaId, x.CreatedAt }); // для быстрого поиска постов в Pomojka
+            e.HasIndex(x => new { x.PomoykaId, x.CreatedAt }); // для быстрого поиска постов в Pomoyka
         });
 
         builder.Entity<FeedBanner>(e =>
@@ -155,8 +156,9 @@ public class AppDbContext : IdentityDbContext<AppUser, IdentityRole<Guid>, Guid>
             e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         });
 
-        builder.Entity<Pomojka>(e =>
+        builder.Entity<Pomoyka>(e =>
         {
+            e.ToTable("Pomojkas");
             e.HasIndex(x => x.Date).IsUnique();
             e.HasIndex(x => x.IsActive);
             e.Property(x => x.Date).HasColumnType("date");

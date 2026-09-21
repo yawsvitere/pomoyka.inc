@@ -3,8 +3,8 @@ namespace Feed.Api.Models;
 public class Post
 {
     public Guid Id { get; set; } = Guid.NewGuid();
-    public Guid PomojkaId { get; set; }
-    public Pomojka? Pomojka { get; set; }
+    public Guid PomoykaId { get; set; }
+    public Pomoyka? Pomoyka { get; set; }
     
     public Guid AuthorId { get; set; }
     public AppUser? Author { get; set; }

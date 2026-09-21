@@ -1,4 +1,4 @@
-name: micrococial-prod
+name: pomoyka.inc
 
 services:
   postgres:

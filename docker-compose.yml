@@ -1,9 +1,8 @@
-name: micrococial-dev
+name: pomoyka-dev
 
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: feed_postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
@@ -25,7 +24,6 @@ services:
 
   minio:
     image: quay.io/minio/minio:latest
-    container_name: feed_minio
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
@@ -44,7 +42,6 @@ services:
 
   minio-init:
     image: quay.io/minio/mc:latest
-    container_name: feed_minio_init
     depends_on:
       minio:
         condition: service_healthy
@@ -58,7 +55,6 @@ services:
 
   imgproxy:
     image: darthsim/imgproxy:latest
-    container_name: feed_imgproxy
     restart: unless-stopped
     cpus: "1.0"
     depends_on:
@@ -82,7 +78,6 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile.dev
-    container_name: feed_backend
     restart: unless-stopped
     depends_on:
       postgres:
