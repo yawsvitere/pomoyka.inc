@@ -84,6 +84,8 @@ public class FilesController : ControllerBase
             .Select(x => new FileFolderDto(x.Id, x.Name, x.AccessLevel, x.Files.Count, x.CreatedAt, $"/files/gallery/{x.Id}")).ToListAsync();
         var libraryFiles = await _db.UserFiles.AsNoTracking().Include(x => x.Folder).Where(x => x.OwnerId == userId)
             .OrderByDescending(x => x.UploadedAt).ToListAsync();
+        foreach (var file in libraryFiles.Where(x => x.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)))
+            await _storage.CreateImagePreviewAsync(file.StorageKey, file.ContentType);
         var files = libraryFiles.Select(x => ToUserFileDto(x)).ToList();
         return Ok(new { folders, files });
     }
@@ -109,6 +111,8 @@ public class FilesController : ControllerBase
             .Where(x => visibleAccessLevels.Contains(x.AccessLevel))
             .OrderByDescending(x => x.UploadedAt)
             .ToListAsync();
+        foreach (var file in userFiles.Where(x => x.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)))
+            await _storage.CreateImagePreviewAsync(file.StorageKey, file.ContentType);
 
         var mainFeedFiles = await _db.PostFiles.AsNoTracking()
             .Include(x => x.Post)
@@ -124,6 +128,8 @@ public class FilesController : ControllerBase
             .Concat(postishkaFiles)
             .OrderByDescending(x => x.UploadedAt)
             .ToList();
+        foreach (var file in postFiles.Where(x => x.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)))
+            await _storage.CreateImagePreviewAsync(file.StorageKey, file.ContentType);
 
         var shitpostFolderId = Guid.Empty;
         folders.Insert(0, new FileFolderDto(
@@ -198,6 +204,8 @@ public class FilesController : ControllerBase
                 visibleAccessLevels.Contains(x.AccessLevel))
             .OrderByDescending(x => x.UploadedAt)
             .ToListAsync();
+        foreach (var file in files.Where(x => x.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)))
+            await _storage.CreateImagePreviewAsync(file.StorageKey, file.ContentType);
 
         return Ok(new { folders, files = files.Select(x => ToUserFileDto(x)).ToList() });
     }
@@ -462,6 +470,8 @@ public class FilesController : ControllerBase
     {
         var folder = await _db.FileFolders.AsNoTracking().Include(x => x.Files).FirstOrDefaultAsync(x => x.Id == folderId);
         if (folder == null || !CanAccess(folder.AccessLevel, folder.OwnerId)) return NotFound();
+        foreach (var file in folder.Files.Where(x => x.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)))
+            await _storage.CreateImagePreviewAsync(file.StorageKey, file.ContentType);
         var images = folder.Files.Where(x => (x.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase) || x.ContentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase)) && CanAccess(x.AccessLevel, x.OwnerId)).Select(x => new { x.Id, x.FileName, Url = _storage.GetPublicObjectUrl(x.StorageKey), PreviewUrl = x.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase) ? _storage.GetPublicObjectUrl(_storage.GetPreviewObjectKey(x.StorageKey)) : x.ContentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase) ? _storage.GetPublicObjectUrl(_storage.GetVideoPreviewObjectKey(x.StorageKey)) : null, x.ContentType, x.Width, x.Height }).ToList();
         return Ok(new { folder.Name, images });
     }

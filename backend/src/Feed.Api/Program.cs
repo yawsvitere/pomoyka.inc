@@ -1,4 +1,6 @@
 using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using Amazon.S3;
 using Amazon.Runtime;
@@ -7,6 +9,7 @@ using Feed.Api.Hubs;
 using Feed.Api.Models;
 using Feed.Api.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -14,6 +17,41 @@ using Microsoft.IdentityModel.Tokens;
 var builder = WebApplication.CreateBuilder(args);
 
 System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler.DefaultInboundClaimTypeMap.Clear();
+
+var dataProtectionKeysPath = builder.Configuration["DataProtection:KeysPath"];
+var dataProtectionCertificatePath = builder.Configuration["DataProtection:CertificatePath"];
+var dataProtectionCertificatePassword = builder.Configuration["DataProtection:CertificatePassword"];
+if (!string.IsNullOrWhiteSpace(dataProtectionKeysPath) &&
+    !string.IsNullOrWhiteSpace(dataProtectionCertificatePath) &&
+    !string.IsNullOrWhiteSpace(dataProtectionCertificatePassword))
+{
+    Directory.CreateDirectory(dataProtectionKeysPath);
+    if (!File.Exists(dataProtectionCertificatePath))
+    {
+        using var rsa = RSA.Create(2048);
+        var request = new CertificateRequest(
+            "CN=Feed.Api.DataProtection",
+            rsa,
+            HashAlgorithmName.SHA256,
+            RSASignaturePadding.Pkcs1);
+        using var generatedCertificate = request.CreateSelfSigned(
+            DateTimeOffset.UtcNow.AddDays(-1),
+            DateTimeOffset.UtcNow.AddYears(10));
+        File.WriteAllBytes(
+            dataProtectionCertificatePath,
+            generatedCertificate.Export(
+                X509ContentType.Pfx,
+                dataProtectionCertificatePassword));
+    }
+
+    var dataProtectionCertificate = X509CertificateLoader.LoadPkcs12(
+        File.ReadAllBytes(dataProtectionCertificatePath),
+        dataProtectionCertificatePassword,
+        X509KeyStorageFlags.EphemeralKeySet);
+    builder.Services.AddDataProtection()
+        .PersistKeysToFileSystem(new DirectoryInfo(dataProtectionKeysPath))
+        .ProtectKeysWithCertificate(dataProtectionCertificate);
+}
 
 
 builder.Services.AddDbContext<AppDbContext>(options =>

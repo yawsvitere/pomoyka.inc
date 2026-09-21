@@ -919,6 +919,7 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
                       const item = entry.item;
                       return (
                         <ContextMenu
+                          key={item.id}
                           customActions={[
                             {
                               key: "open",
@@ -961,7 +962,6 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
                         >
                           <div
                             className={`fm-file-row fm-folder-row${dragOverFolderId === item.id ? " is-drop-target" : ""}`}
-                            key={item.id}
                             onDragOver={(event) => {
                               if (!event.dataTransfer.types.includes("file-id"))
                                 return;
@@ -1126,6 +1126,7 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
                     const file = entry.item;
                     return (
                       <ContextMenu
+                        key={file.id}
                         customActions={[
                           {
                             key: "open",

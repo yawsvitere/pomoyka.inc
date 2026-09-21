@@ -42,7 +42,9 @@ public class AppDbContext : IdentityDbContext<AppUser, IdentityRole<Guid>, Guid>
         builder.Entity<FileFolder>(e =>
         {
             e.Property(x => x.Name).HasMaxLength(120).IsRequired();
-            e.Property(x => x.AccessLevel).HasDefaultValue(FileAccessLevel.Authenticated);
+            e.Property(x => x.AccessLevel)
+                .HasDefaultValue(FileAccessLevel.Authenticated)
+                .HasSentinel(FileAccessLevel.Authenticated);
             e.HasIndex(x => new { x.OwnerId, x.Name }).IsUnique();
             e.HasOne(x => x.Owner).WithMany().HasForeignKey(x => x.OwnerId).OnDelete(DeleteBehavior.Cascade);
         });
@@ -52,7 +54,9 @@ public class AppDbContext : IdentityDbContext<AppUser, IdentityRole<Guid>, Guid>
             e.Property(x => x.FileName).HasMaxLength(255).IsRequired();
             e.Property(x => x.StorageKey).HasMaxLength(500).IsRequired();
             e.Property(x => x.ContentType).HasMaxLength(255).IsRequired();
-            e.Property(x => x.AccessLevel).HasDefaultValue(FileAccessLevel.Authenticated);
+            e.Property(x => x.AccessLevel)
+                .HasDefaultValue(FileAccessLevel.Authenticated)
+                .HasSentinel(FileAccessLevel.Authenticated);
             e.HasIndex(x => new { x.OwnerId, x.UploadedAt });
             e.HasIndex(x => new { x.OwnerId, x.AccessLevel, x.UploadedAt });
             e.HasIndex(x => new { x.FolderId, x.UploadedAt });
@@ -96,7 +100,9 @@ public class AppDbContext : IdentityDbContext<AppUser, IdentityRole<Guid>, Guid>
             e.Property(p => p.Text).HasColumnType("text");
             e.Property(p => p.Title).HasMaxLength(200);
             e.Property(p => p.Description).HasMaxLength(500);
-            e.Property(p => p.AccessLevel).HasDefaultValue(PostAccessLevel.Authenticated);
+            e.Property(p => p.AccessLevel)
+                .HasDefaultValue(PostAccessLevel.Authenticated)
+                .HasSentinel(PostAccessLevel.Authenticated);
             e.HasIndex(x => new { x.IsPostishka, x.CreatedAt });
             e.HasIndex(x => new { x.PomojkaId, x.IsPostishka, x.CreatedAt });
             e.HasIndex(x => new { x.IsPostishka, x.AccessLevel, x.CreatedAt });

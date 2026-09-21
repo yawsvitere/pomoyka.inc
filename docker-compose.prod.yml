@@ -72,6 +72,9 @@ services:
         condition: service_healthy
     environment:
       ASPNETCORE_ENVIRONMENT: Production
+      DataProtection__KeysPath: /root/.aspnet/DataProtection-Keys
+      DataProtection__CertificatePath: /root/.aspnet/DataProtection-Keys/key-encryption.pfx
+      DataProtection__CertificatePassword: ${DATAPROTECTION_CERT_PASSWORD}
       ConnectionStrings__DefaultConnection: "Host=postgres;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}"
       Minio__Endpoint: minio:9000
       Minio__PublicEndpoint: ${MINIO_PUBLIC_ENDPOINT:-localhost}
@@ -83,6 +86,8 @@ services:
       Jwt__Issuer: FeedApi
       Jwt__Audience: FeedClient
       ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+    volumes:
+      - dataprotection_keys:/root/.aspnet/DataProtection-Keys
 
   frontend:
     build:
@@ -98,3 +103,4 @@ services:
 volumes:
   postgres_data:
   minio_data:
+  dataprotection_keys:
