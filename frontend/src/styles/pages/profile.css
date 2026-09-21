@@ -115,13 +115,17 @@
   font-size: 18px;
 }
 .profile-files-list {
+  display: flex;
+  flex-direction: column;
   min-height: 160px;
-  height: auto;
+  height: 440px;
+  max-height: 60vh;
   margin-top: 0;
 }
 .profile-files-list .fm-list-scroll {
-  flex: none;
-  overflow-y: visible;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
 }
 .profile-files-breadcrumb {
   margin: 0;

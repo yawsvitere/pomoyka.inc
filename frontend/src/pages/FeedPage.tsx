@@ -33,7 +33,11 @@ function sortPostsNewestFirst(posts: Post[]) {
   );
 }
 
-function updatePostAvatar(post: Post, userId: string, avatarUrl: string | null) {
+function updatePostAvatar(
+  post: Post,
+  userId: string,
+  avatarUrl: string | null,
+) {
   return {
     ...post,
     author:
@@ -48,12 +52,18 @@ function updatePostAvatar(post: Post, userId: string, avatarUrl: string | null) 
     reactions: post.reactions.map((reaction) => ({
       ...reaction,
       user:
-        reaction.user.id === userId ? { ...reaction.user, avatarUrl } : reaction.user,
+        reaction.user.id === userId
+          ? { ...reaction.user, avatarUrl }
+          : reaction.user,
     })),
   };
 }
 
-function updatePostNicknameColor(post: Post, userId: string, nicknameColor: string) {
+function updatePostNicknameColor(
+  post: Post,
+  userId: string,
+  nicknameColor: string,
+) {
   return {
     ...post,
     author:
@@ -81,7 +91,9 @@ export function FeedPage() {
   const { user } = useAuth();
   const [posts, setPosts] = useState<Post[]>([]);
   const [postishki, setPostishki] = useState<Post[]>([]);
-  const [banners, setBanners] = useState<import("../api/types").FeedBanner[]>([]);
+  const [banners, setBanners] = useState<import("../api/types").FeedBanner[]>(
+    [],
+  );
   const [isLoading, setIsLoading] = useState(true);
   const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState<string>("");
@@ -91,14 +103,22 @@ export function FeedPage() {
   useEffect(() => {
     if (!user) return;
 
-    void postsApi.getFeedBanners().then(setBanners).catch(() => setBanners([]));
-    void postsApi.getPostishki(1, 3).then(setPostishki).catch(() => setPostishki([]));
+    void postsApi
+      .getFeedBanners()
+      .then(setBanners)
+      .catch(() => setBanners([]));
+    void postsApi
+      .getPostishki(1, 3)
+      .then(setPostishki)
+      .catch(() => setPostishki([]));
 
     setPosts((currentPosts) =>
       currentPosts.map((post) => ({
         ...post,
         author:
-          post.author.id === user.id ? { ...post.author, ...user } : post.author,
+          post.author.id === user.id
+            ? { ...post.author, ...user }
+            : post.author,
         comments: post.comments.map((comment) => ({
           ...comment,
           author:
@@ -168,16 +188,19 @@ export function FeedPage() {
       );
     });
 
-    connection.on("PostFileAdded", (postId: string, file: Post["files"][number]) => {
-      setPosts((currentPosts) =>
-        currentPosts.map((post) =>
-          post.id === postId &&
-          !post.files.some((item) => item.id === file.id)
-            ? { ...post, files: [...post.files, file] }
-            : post,
-        ),
-      );
-    });
+    connection.on(
+      "PostFileAdded",
+      (postId: string, file: Post["files"][number]) => {
+        setPosts((currentPosts) =>
+          currentPosts.map((post) =>
+            post.id === postId &&
+            !post.files.some((item) => item.id === file.id)
+              ? { ...post, files: [...post.files, file] }
+              : post,
+          ),
+        );
+      },
+    );
 
     connection.on("CommentDeleted", (postId: string, commentId: string) => {
       setPosts((currentPosts) =>
@@ -398,6 +421,7 @@ export function FeedPage() {
                     <PostCard
                       key={post.id}
                       post={post}
+                      isOwnPost={post.author.id === user?.id}
                       showAuthor={
                         index === 0 ||
                         (posts[index - 1].author.id !== post.author.id &&
@@ -408,7 +432,9 @@ export function FeedPage() {
                       showArticleLink
                       commentsOpen={openComments.has(post.id)}
                       onOpenComments={() =>
-                        setOpenComments((current) => new Set(current).add(post.id))
+                        setOpenComments((current) =>
+                          new Set(current).add(post.id),
+                        )
                       }
                       onReaction={(emoji) =>
                         void handlePostReaction(post.id, emoji)

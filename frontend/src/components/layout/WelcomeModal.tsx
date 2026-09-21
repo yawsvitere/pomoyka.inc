@@ -448,7 +448,7 @@ function VaultScene() {
   return (
     <div className="wm-vault">
       <div className="wm-drop">
-        <p className="wm-drop-label">кидай сюда фотки с Анапы</p>
+        <p className="wm-drop-label">фотки с анапы</p>
         <div className="wm-tiles">
           {VAULT.map((f, i) => (
             <div
@@ -545,7 +545,10 @@ function StartScene({
   }, [motionStatus]);
 
   async function enableMotion() {
-    if (!window.isSecureContext || typeof DeviceOrientationEvent === "undefined") {
+    if (
+      !window.isSecureContext ||
+      typeof DeviceOrientationEvent === "undefined"
+    ) {
       setMotionStatus("unavailable");
       return;
     }
@@ -554,9 +557,10 @@ function StartScene({
     motionSeen.current = false;
     motionBase.current = null;
 
-    const orientation = DeviceOrientationEvent as typeof DeviceOrientationEvent & {
-      requestPermission?: () => Promise<"granted" | "denied">;
-    };
+    const orientation =
+      DeviceOrientationEvent as typeof DeviceOrientationEvent & {
+        requestPermission?: () => Promise<"granted" | "denied">;
+      };
 
     if (orientation.requestPermission) {
       let permission: "granted" | "denied";
@@ -602,33 +606,33 @@ function StartScene({
   return (
     <div className="wm-ticket-scene">
       <div className="wm-ticket-wrap">
-      <div
-        className="wm-ticket"
-        ref={ref}
-        onPointerMove={onMove}
-        onPointerLeave={onLeave}
-      >
-        <div className="wm-ticket-top">
-          <b>пропуск</b>
-          <span>помойка.inc</span>
+        <div
+          className="wm-ticket"
+          ref={ref}
+          onPointerMove={onMove}
+          onPointerLeave={onLeave}
+        >
+          <div className="wm-ticket-top">
+            <b>пропуск</b>
+            <span>помойка.inc</span>
+          </div>
+          {imageUrl ? (
+            <img
+              className="wm-ticket-photo"
+              src={`${import.meta.env.VITE_API_URL ?? ""}${imageUrl}`}
+              alt=""
+              draggable={false}
+            />
+          ) : (
+            <Photo id="ticket" className="wm-ticket-photo" />
+          )}
+          <div className="wm-ticket-name">
+            <small>участник</small>
+            <strong>{name || "гость"}</strong>
+          </div>
+          <div className="wm-ticket-bar" aria-hidden="true" />
+          <small className="wm-ticket-foot">действует, пока не надоест</small>
         </div>
-        {imageUrl ? (
-          <img
-            className="wm-ticket-photo"
-            src={`${import.meta.env.VITE_API_URL ?? ""}${imageUrl}`}
-            alt=""
-            draggable={false}
-          />
-        ) : (
-          <Photo id="ticket" className="wm-ticket-photo" />
-        )}
-        <div className="wm-ticket-name">
-          <small>участник</small>
-          <strong>{name || "гость"}</strong>
-        </div>
-        <div className="wm-ticket-bar" aria-hidden="true" />
-        <small className="wm-ticket-foot">действует, пока не надоест</small>
-      </div>
       </div>
     </div>
   );

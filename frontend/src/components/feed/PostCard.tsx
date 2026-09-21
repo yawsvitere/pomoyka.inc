@@ -27,6 +27,7 @@ interface PostCardProps {
   commentsOpen?: boolean;
   authorLinks?: boolean;
   showArticleLink?: boolean;
+  isOwnPost?: boolean;
   onOpenComments?: () => void;
   onCommentLike?: (commentId: string) => void;
   onReaction?: (emoji: string) => void;
@@ -63,6 +64,14 @@ type GalleryLayout =
       aspectRatio: number;
     };
 
+function getRatio(
+  file: Post["files"][number],
+  ratioMap: Record<string, ImageRatio>,
+) {
+  const dimensions = ratioMap[file.id];
+  return dimensions ? dimensions.width / dimensions.height : 1;
+}
+
 function isAdmin() {
   const token = localStorage.getItem("token");
   if (!token) return false;
@@ -82,17 +91,18 @@ function isAdmin() {
   }
 }
 
-const imageRatios: Record<string, ImageRatio> = {};
-function getRatio(file: Post["files"][number]) {
-  const dimensions = imageRatios[file.id];
-  return dimensions ? dimensions.width / dimensions.height : 1;
-}
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
 }
 
-function calculateMosaicLayout(files: Post["files"]): GalleryLayout | null {
-  const items = files.map((file) => ({ file, ratio: getRatio(file) }));
+function calculateMosaicLayout(
+  files: Post["files"],
+  ratioMap: Record<string, ImageRatio>,
+): GalleryLayout | null {
+  const items = files.map((file) => ({
+    file,
+    ratio: getRatio(file, ratioMap),
+  }));
   const count = items.length;
   if (count === 1)
     return {
@@ -174,8 +184,9 @@ function calculateMosaicLayout(files: Post["files"]): GalleryLayout | null {
 function calculateRows(
   files: Post["files"],
   containerWidth: number,
+  ratioMap: Record<string, ImageRatio>,
 ): GalleryLayout {
-  const ratios = files.map(getRatio);
+  const ratios = files.map((file) => getRatio(file, ratioMap));
   const bestScores = Array<number>(files.length + 1).fill(
     Number.POSITIVE_INFINITY,
   );
@@ -222,19 +233,24 @@ function calculateRows(
 function calculateLayout(
   files: Post["files"],
   containerWidth: number,
+  ratioMap: Record<string, ImageRatio>,
 ): GalleryLayout {
   if (!files.length || !containerWidth) return { type: "rows", rows: [] };
 
   if (files.length <= 4) {
-    return calculateMosaicLayout(files) ?? { type: "rows", rows: [] };
+    return calculateMosaicLayout(files, ratioMap) ?? { type: "rows", rows: [] };
   }
 
-  return calculateMosaicLayout(files) ?? calculateRows(files, containerWidth);
+  return (
+    calculateMosaicLayout(files, ratioMap) ??
+    calculateRows(files, containerWidth, ratioMap)
+  );
 }
 function PostImageGallery({ files }: { files: Post["files"] }) {
   const galleryRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(0);
   const [, setRatiosVersion] = useState(0);
+  const ratioMapRef = useRef<Record<string, ImageRatio>>({});
   useEffect(() => {
     const gallery = galleryRef.current;
     if (!gallery) return;
@@ -245,14 +261,18 @@ function PostImageGallery({ files }: { files: Post["files"] }) {
     setContainerWidth(gallery.clientWidth);
     return () => observer.disconnect();
   }, []);
-  const layout = calculateLayout(files, containerWidth);
+  const layout = calculateLayout(files, containerWidth, ratioMapRef.current);
   const handleImageLoad = (
     event: SyntheticEvent<HTMLImageElement>,
     fileId: string,
   ) => {
     const image = event.currentTarget;
-    if (!imageRatios[fileId] && image.naturalWidth && image.naturalHeight) {
-      imageRatios[fileId] = {
+    if (
+      !ratioMapRef.current[fileId] &&
+      image.naturalWidth &&
+      image.naturalHeight
+    ) {
+      ratioMapRef.current[fileId] = {
         width: image.naturalWidth,
         height: image.naturalHeight,
       };
@@ -262,7 +282,7 @@ function PostImageGallery({ files }: { files: Post["files"] }) {
   const renderImage = (item: GalleryItem) => {
     const fileUrl = getBrowserFileUrl(item.file.downloadUrl);
     const isSingleImage = files.length === 1;
-    const isPortrait = getRatio(item.file) < 1;
+    const isPortrait = getRatio(item.file, ratioMapRef.current) < 1;
     const isSinglePortrait = isSingleImage && isPortrait;
 
     return (
@@ -326,7 +346,7 @@ function PostImageGallery({ files }: { files: Post["files"] }) {
             style={{ height: row.height }}
           >
             {row.files.map((file) =>
-              renderImage({ file, ratio: getRatio(file) }),
+              renderImage({ file, ratio: getRatio(file, ratioMapRef.current) }),
             )}
           </div>
         ))
@@ -400,6 +420,7 @@ export function PostCard({
   commentsOpen = false,
   authorLinks = false,
   showArticleLink = false,
+  isOwnPost = false,
   onOpenComments,
   onCommentLike,
   onReaction,
@@ -408,6 +429,7 @@ export function PostCard({
 }: PostCardProps) {
   const { user } = useAuth();
   const [localCommentsOpen, setLocalCommentsOpen] = useState(false);
+  const isMine = isOwnPost || user?.id === post.author.id;
   const profileUrl = `/profile/${encodeURIComponent(post.author.displayName)}`;
   const commentsVisible = commentsOpen || localCommentsOpen;
   const author = post.author.avatarUrl ? (
@@ -530,7 +552,7 @@ export function PostCard({
         onDelete={onDeletePost ? () => onDeletePost(post.id) : undefined}
       >
         <article
-          className={`post${showAuthor ? " post--with-author" : " post--continuation"}`}
+          className={`post${showAuthor ? " post--with-author" : " post--continuation"}${isMine ? " post--mine" : ""}`}
         >
           {showAuthor ? (
             authorLinks ? (

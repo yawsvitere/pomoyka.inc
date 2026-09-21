@@ -53,6 +53,8 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
+  -webkit-user-select: none;
+  user-select: none;
   animation: feed-fade-in 180ms ease-out 80ms both;
 }
 

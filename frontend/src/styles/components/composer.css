@@ -218,7 +218,7 @@
 @media (max-width: 700px) {
   .composer-dock {
     right: 8px;
-    bottom: calc(76px + env(safe-area-inset-bottom));
+    bottom: calc(54px + env(safe-area-inset-bottom));
     left: 8px;
   }
 
