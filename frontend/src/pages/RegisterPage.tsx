@@ -2,6 +2,9 @@ import { useState } from "react";
 import { useNavigate, Link, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { AuthLayout } from "../components/auth/AuthLayout";
+import { useToast } from "../components/ui/useToast";
+import eyeOffIcon from "../assets/icons/eye-off-outline.svg";
+import eyeOpenIcon from "../assets/icons/eye-open.svg";
 
 export function RegisterPage() {
   const [email, setEmail] = useState("");
@@ -10,10 +13,10 @@ export function RegisterPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [showPasswordConfirmation, setShowPasswordConfirmation] = useState(false);
   const [displayName, setDisplayName] = useState("");
-  const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const { register } = useAuth();
+  const { notify } = useToast();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -23,10 +26,15 @@ export function RegisterPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
-    setError("");
+    if (password.length < 8) {
+      const message = "Пароль должен содержать не менее 8 символов.";
+      notify("error", message);
+      return;
+    }
 
     if (password !== passwordConfirmation) {
-      setError("Пароли не совпадают. Проверь оба поля и попробуй еще раз.");
+      const message = "Пароли не совпадают. Проверь оба поля и попробуй еще раз.";
+      notify("error", message);
       return;
     }
 
@@ -38,12 +46,11 @@ export function RegisterPage() {
       navigate("/");
     } catch (err: any) {
       const errors = err.response?.data?.errors;
-
-      setError(
+      const message =
         errors
-          ? errors.join(", ")
-          : (err.response?.data?.message ?? "Не удалось зарегистрироваться"),
-      );
+        ? errors.join(", ")
+        : (err.response?.data?.message ?? "Не удалось зарегистрироваться");
+      notify("error", message);
     } finally {
       setIsSubmitting(false);
     }
@@ -96,7 +103,6 @@ export function RegisterPage() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
-            minLength={8}
           />
           <button
             className="auth-password-toggle"
@@ -104,7 +110,7 @@ export function RegisterPage() {
             aria-label={showPassword ? "Скрыть пароль" : "Показать пароль"}
             onClick={() => setShowPassword((visible) => !visible)}
           >
-            {showPassword ? "◉" : "◌"}
+            <img src={showPassword ? eyeOpenIcon : eyeOffIcon} alt="" />
           </button>
         </div>
 
@@ -116,7 +122,6 @@ export function RegisterPage() {
             value={passwordConfirmation}
             onChange={(e) => setPasswordConfirmation(e.target.value)}
             required
-            minLength={8}
           />
           <button
             className="auth-password-toggle"
@@ -124,11 +129,9 @@ export function RegisterPage() {
             aria-label={showPasswordConfirmation ? "Скрыть пароль" : "Показать пароль"}
             onClick={() => setShowPasswordConfirmation((visible) => !visible)}
           >
-            {showPasswordConfirmation ? "◉" : "◌"}
+            <img src={showPasswordConfirmation ? eyeOpenIcon : eyeOffIcon} alt="" />
           </button>
         </div>
-
-        {error && <p className="auth-error">{error}</p>}
 
         <button className="auth-button" type="submit" disabled={isSubmitting}>
           {isSubmitting ? "Регистрируем..." : "Создать аккаунт"}

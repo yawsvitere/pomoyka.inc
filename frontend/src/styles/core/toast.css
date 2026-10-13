@@ -10,6 +10,10 @@
   pointer-events: none;
 }
 
+body:has(.auth-page) .toast-region {
+  top: 12px;
+}
+
 .toast {
   --toast-color: #16a34a;
   display: flex;

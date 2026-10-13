@@ -2,28 +2,31 @@ import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { AuthLayout } from "../components/auth/AuthLayout";
+import { useToast } from "../components/ui/useToast";
+import eyeOffIcon from "../assets/icons/eye-off-outline.svg";
+import eyeOpenIcon from "../assets/icons/eye-open.svg";
 
 export function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const { login } = useAuth();
+  const { notify } = useToast();
   const navigate = useNavigate();
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
-    setError("");
     setIsSubmitting(true);
 
     try {
       await login(email, password);
       navigate("/");
     } catch (err: any) {
-      setError(err.response?.data?.message ?? "Не удалось войти");
+      const message = err.response?.data?.message ?? "Не удалось войти";
+      notify("error", message);
     } finally {
       setIsSubmitting(false);
     }
@@ -66,11 +69,9 @@ export function LoginPage() {
             aria-label={showPassword ? "Скрыть пароль" : "Показать пароль"}
             onClick={() => setShowPassword((visible) => !visible)}
           >
-            {showPassword ? "◉" : "◌"}
+            <img src={showPassword ? eyeOpenIcon : eyeOffIcon} alt="" />
           </button>
         </div>
-
-        {error && <p className="auth-error">{error}</p>}
 
         <button className="auth-button" type="submit" disabled={isSubmitting}>
           {isSubmitting ? "Входим..." : "Войти"}

@@ -1,22 +1,22 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { AuthLayout } from "../components/auth/AuthLayout";
+import { useToast } from "../components/ui/useToast";
 import * as authApi from "../api/auth";
 
 export function CodePage() {
   const [code, setCode] = useState("");
-  const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const { notify } = useToast();
   const navigate = useNavigate();
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
-    setError("");
-
     if (!/^\w{4}-\w{4}-\w{4}$/.test(code)) {
-      setError("Введите код в формате XXXX-XXXX-XXXX");
+      const message = "Введите код в формате XXXX-XXXX-XXXX";
+      notify("error", message);
       return;
     }
 
@@ -31,7 +31,8 @@ export function CodePage() {
         },
       });
     } catch (err: any) {
-      setError(err.response?.data?.message ?? "Неверный код");
+      const message = err.response?.data?.message ?? "Неверный код";
+      notify("error", message);
     } finally {
       setIsSubmitting(false);
     }
@@ -65,8 +66,6 @@ export function CodePage() {
           }}
           autoFocus
         />
-
-        {error && <p className="auth-error">{error}</p>}
 
         <button className="auth-button" type="submit" disabled={isSubmitting}>
           {isSubmitting ? "Проверяем..." : "Продолжить"}
