@@ -78,17 +78,6 @@ export async function createFolder(name: string, accessLevel: FileAccessLevel) {
 async function getMediaDimensions(
   file: File,
 ): Promise<{ width: number; height: number } | null> {
-  if (file.type.startsWith("image/")) {
-    const url = URL.createObjectURL(file);
-    try {
-      const image = new Image();
-      image.src = url;
-      await image.decode();
-      return { width: image.naturalWidth, height: image.naturalHeight };
-    } finally {
-      URL.revokeObjectURL(url);
-    }
-  }
   if (file.type.startsWith("video/")) {
     const url = URL.createObjectURL(file);
     try {

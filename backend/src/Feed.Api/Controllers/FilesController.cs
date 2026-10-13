@@ -10,7 +10,6 @@ using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Net.Http.Headers;
 using Amazon.S3;
-using SixLabors.ImageSharp;
 
 namespace Feed.Api.Controllers;
 
@@ -21,6 +20,7 @@ public class FilesController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly IStorageService _storage;
+    private readonly ImagePreviewBackgroundService _imagePreviewBackgroundService;
     private readonly IHubContext<FeedHub> _feedHub;
 
     private const long MaxFileSizeBytes = 500L * 1024 * 1024;
@@ -32,10 +32,12 @@ public class FilesController : ControllerBase
     public FilesController(
         AppDbContext db,
         IStorageService storage,
+        ImagePreviewBackgroundService imagePreviewBackgroundService,
         IHubContext<FeedHub> feedHub)
     {
         _db = db;
         _storage = storage;
+        _imagePreviewBackgroundService = imagePreviewBackgroundService;
         _feedHub = feedHub;
     }
 
@@ -84,8 +86,6 @@ public class FilesController : ControllerBase
             .Select(x => new FileFolderDto(x.Id, x.Name, x.AccessLevel, x.Files.Count, x.CreatedAt, $"/files/gallery/{x.Id}")).ToListAsync();
         var libraryFiles = await _db.UserFiles.AsNoTracking().Include(x => x.Folder).Where(x => x.OwnerId == userId)
             .OrderByDescending(x => x.UploadedAt).ToListAsync();
-        foreach (var file in libraryFiles.Where(x => x.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)))
-            await _storage.CreateImagePreviewAsync(file.StorageKey, file.ContentType);
         var files = libraryFiles.Select(x => ToUserFileDto(x)).ToList();
         return Ok(new { folders, files });
     }
@@ -111,9 +111,6 @@ public class FilesController : ControllerBase
             .Where(x => visibleAccessLevels.Contains(x.AccessLevel))
             .OrderByDescending(x => x.UploadedAt)
             .ToListAsync();
-        foreach (var file in userFiles.Where(x => x.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)))
-            await _storage.CreateImagePreviewAsync(file.StorageKey, file.ContentType);
-
         var mainFeedFiles = await _db.PostFiles.AsNoTracking()
             .Include(x => x.Post)
             .Where(x => x.Post != null && !x.Post.IsPostishka)
@@ -128,9 +125,6 @@ public class FilesController : ControllerBase
             .Concat(postishkaFiles)
             .OrderByDescending(x => x.UploadedAt)
             .ToList();
-        foreach (var file in postFiles.Where(x => x.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)))
-            await _storage.CreateImagePreviewAsync(file.StorageKey, file.ContentType);
-
         var shitpostFolderId = Guid.Empty;
         folders.Insert(0, new FileFolderDto(
             shitpostFolderId,
@@ -204,9 +198,6 @@ public class FilesController : ControllerBase
                 visibleAccessLevels.Contains(x.AccessLevel))
             .OrderByDescending(x => x.UploadedAt)
             .ToListAsync();
-        foreach (var file in files.Where(x => x.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)))
-            await _storage.CreateImagePreviewAsync(file.StorageKey, file.ContentType);
-
         return Ok(new { folders, files = files.Select(x => ToUserFileDto(x)).ToList() });
     }
 
@@ -317,22 +308,15 @@ public class FilesController : ControllerBase
         }
         var fileName = Path.GetFileName(file.FileName);
         await using var stream = file.OpenReadStream();
-        if (width is null && height is null && file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
-        {
-            using var image = await Image.LoadAsync(stream);
-            width = image.Width;
-            height = image.Height;
-            stream.Position = 0;
-        }
         var storageKey = BuildLibraryStorageKey(userId.Value, folderId, fileName);
         await _storage.UploadObjectAsync(storageKey, stream, file.ContentType);
-        if (file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
-            await _storage.CreateImagePreviewAsync(storageKey, file.ContentType);
-        else if (file.ContentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase))
+        if (file.ContentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase))
             await _storage.CreateVideoPreviewAsync(storageKey, file.ContentType);
         var userFile = new UserFile { OwnerId = userId.Value, FolderId = folderId, FileName = fileName, StorageKey = storageKey, ContentType = file.ContentType, SizeBytes = file.Length, Width = width, Height = height, AccessLevel = folder?.AccessLevel ?? FileAccessLevel.Authenticated };
         _db.UserFiles.Add(userFile);
         await _db.SaveChangesAsync();
+        if (file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+            _imagePreviewBackgroundService.Enqueue(storageKey, file.ContentType);
         return Ok(ToUserFileDto(userFile, folder));
     }
 
@@ -410,12 +394,7 @@ public class FilesController : ControllerBase
         {
             var destinationKey = BuildLibraryStorageKey(userId!.Value, request.FolderId, file.FileName);
             await _storage.CopyObjectAsync(file.StorageKey, destinationKey);
-            if (file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
-            {
-                await _storage.CreateImagePreviewAsync(file.StorageKey, file.ContentType);
-                await _storage.CopyObjectAsync(_storage.GetPreviewObjectKey(file.StorageKey), _storage.GetPreviewObjectKey(destinationKey));
-            }
-            else if (file.ContentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase))
+            if (file.ContentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase))
             {
                 await _storage.CreateVideoPreviewAsync(file.StorageKey, file.ContentType);
                 await _storage.CopyObjectAsync(_storage.GetVideoPreviewObjectKey(file.StorageKey), _storage.GetVideoPreviewObjectKey(destinationKey));
@@ -428,6 +407,8 @@ public class FilesController : ControllerBase
             file.Folder = targetFolder;
             file.AccessLevel = targetFolder?.AccessLevel ?? FileAccessLevel.Private;
             await _db.SaveChangesAsync();
+            if (file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+                _imagePreviewBackgroundService.Enqueue(destinationKey, file.ContentType);
         }
 
         return Ok(ToUserFileDto(file, targetFolder));
@@ -470,8 +451,6 @@ public class FilesController : ControllerBase
     {
         var folder = await _db.FileFolders.AsNoTracking().Include(x => x.Files).FirstOrDefaultAsync(x => x.Id == folderId);
         if (folder == null || !CanAccess(folder.AccessLevel, folder.OwnerId)) return NotFound();
-        foreach (var file in folder.Files.Where(x => x.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)))
-            await _storage.CreateImagePreviewAsync(file.StorageKey, file.ContentType);
         var images = folder.Files.Where(x => (x.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase) || x.ContentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase)) && CanAccess(x.AccessLevel, x.OwnerId)).Select(x => new { x.Id, x.FileName, Url = _storage.GetPublicObjectUrl(x.StorageKey), PreviewUrl = x.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase) ? _storage.GetPublicObjectUrl(_storage.GetPreviewObjectKey(x.StorageKey)) : x.ContentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase) ? _storage.GetPublicObjectUrl(_storage.GetVideoPreviewObjectKey(x.StorageKey)) : null, x.ContentType, x.Width, x.Height }).ToList();
         return Ok(new { folder.Name, images });
     }
@@ -597,7 +576,6 @@ public class FilesController : ControllerBase
 
         await using var stream = file.OpenReadStream();
         var storageKey = await _storage.UploadDeduplicatedObjectAsync(stream, file.ContentType);
-        await _storage.CreateImagePreviewAsync(storageKey, file.ContentType);
         await _storage.CreateVideoPreviewAsync(storageKey, file.ContentType);
 
         var postFile = new PostFile
@@ -610,6 +588,8 @@ public class FilesController : ControllerBase
         };
         _db.PostFiles.Add(postFile);
         await _db.SaveChangesAsync();
+        if (postFile.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+            _imagePreviewBackgroundService.Enqueue(storageKey, postFile.ContentType);
 
         var dto = new PostFileDto
         {

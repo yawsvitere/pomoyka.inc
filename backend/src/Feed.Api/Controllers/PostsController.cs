@@ -20,6 +20,7 @@ public class PostsController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly IStorageService _storage;
+    private readonly ImagePreviewBackgroundService _imagePreviewBackgroundService;
     private readonly IHubContext<FeedHub> _hub;
     private readonly PomoykaService _pomoykaService;
     private readonly ILogger<PostsController> _logger;
@@ -27,12 +28,14 @@ public class PostsController : ControllerBase
     public PostsController(
         AppDbContext db,
         IStorageService storage,
+        ImagePreviewBackgroundService imagePreviewBackgroundService,
         IHubContext<FeedHub> hub,
         PomoykaService pomoykaService,
         ILogger<PostsController> logger)
     {
         _db = db;
         _storage = storage;
+        _imagePreviewBackgroundService = imagePreviewBackgroundService;
         _hub = hub;
         _pomoykaService = pomoykaService;
         _logger = logger;
@@ -162,13 +165,16 @@ public class PostsController : ControllerBase
         {
             await using var stream = file.OpenReadStream();
             var storageKey = await _storage.UploadDeduplicatedObjectAsync(stream, file.ContentType);
-            await _storage.CreateImagePreviewAsync(storageKey, file.ContentType);
             await _storage.CreateVideoPreviewAsync(storageKey, file.ContentType);
             var stored = new PostFile { PostId = post.Id, FileName = Path.GetFileName(file.FileName), StorageKey = storageKey, ContentType = file.ContentType, SizeBytes = file.Length };
             storedFiles.Add(stored);
             _db.PostFiles.Add(stored);
         }
         await _db.SaveChangesAsync();
+
+        foreach (var image in storedFiles.Where(file =>
+                     file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)))
+            _imagePreviewBackgroundService.Enqueue(image.StorageKey, image.ContentType);
 
         var created = await QueryPost(post.Id).FirstAsync();
         var dto = ToDto(created);
@@ -351,7 +357,6 @@ public class PostsController : ControllerBase
         {
             await using var stream = file.OpenReadStream();
             var storageKey = await _storage.UploadDeduplicatedObjectAsync(stream, file.ContentType);
-            await _storage.CreateImagePreviewAsync(storageKey, file.ContentType);
             await _storage.CreateVideoPreviewAsync(storageKey, file.ContentType);
             var stored = new PostFile
             {
@@ -380,6 +385,10 @@ public class PostsController : ControllerBase
             ? PostAccessLevel.Public
             : PostAccessLevel.Authenticated;
         await _db.SaveChangesAsync();
+
+        foreach (var image in uploadedFiles.Where(file =>
+                     file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)))
+            _imagePreviewBackgroundService.Enqueue(image.StorageKey, image.ContentType);
 
         var updated = await QueryPost(post.Id).FirstAsync();
         return Ok(ToDto(updated));

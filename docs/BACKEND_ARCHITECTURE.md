@@ -67,6 +67,7 @@ Dev-контейнер применяет миграции на старте. П
 - `ConnectionStrings__DefaultConnection`
 - `Jwt__Secret`, `Jwt__Issuer`, `Jwt__Audience`
 - `Minio__Endpoint`, `Minio__PublicEndpoint`, `Minio__AccessKey`, `Minio__SecretKey`, `Minio__Bucket`, `Minio__UseSSL` (legacy configuration section; points to RustFS)
+- `Imgproxy__Endpoint` (internal imgproxy URL used by the background image-preview worker)
 - `ADMIN_EMAIL`
 
 Секреты — только в `.env`, никогда в коде.
@@ -79,6 +80,8 @@ docker compose up --build
 ```
 
 Dev-compose поднимает PostgreSQL, RustFS, imgproxy, API (`dotnet watch`). API — `http://localhost:5000`, S3 API — `localhost:9000`, консоль RustFS — `localhost:9001`.
+
+Превью изображений генерируются в фоне через imgproxy после загрузки и сохраняются в RustFS под `previews/`. Imgproxy читает оригиналы по внутреннему HTTP endpoint хранилища, доступному для чтения согласно политике bucket; API использует свои S3 credentials только для сохранения результата. Запросы чтения не запускают генерацию; при старте API фоновый сервис также ставит в очередь сохранённые изображения без готового превью.
 
 ## Добавление фичи
 

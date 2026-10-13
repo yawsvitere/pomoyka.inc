@@ -2,8 +2,6 @@ using Amazon.S3;
 using Amazon.S3.Model;
 using System.Security.Cryptography;
 using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Formats.Webp;
-using SixLabors.ImageSharp.Processing;
 using System.Diagnostics;
 
 namespace Feed.Api.Services;
@@ -18,7 +16,7 @@ public interface IStorageService
     Task DeleteObjectAsync(string objectKey);
     Task CopyObjectAsync(string sourceKey, string destinationKey);
     Task UploadObjectAsync(string objectKey, Stream content, string contentType);
-    Task<string?> CreateImagePreviewAsync(string sourceKey, string contentType);
+    Task<ImagePreviewResult?> CreateImagePreviewAsync(string sourceKey, string contentType);
     Task<string?> CreateVideoPreviewAsync(string sourceKey, string contentType);
     Task<string> CreateAvatarVideoAsync(Stream content, int? cropX = null, int? cropY = null, int? cropWidth = null, int? cropHeight = null);
     Task<string> UploadDeduplicatedObjectAsync(Stream content, string contentType);
@@ -29,17 +27,26 @@ public interface IStorageService
     Task<IReadOnlyList<string>> ListObjectKeysAsync(string prefix);
 }
 
+public sealed record ImagePreviewResult(string PreviewKey, int Width, int Height);
+
 public class StorageService : IStorageService
 {
     private readonly IAmazonS3 _s3;
     private readonly IAmazonS3 _publicS3;
+    private readonly HttpClient _httpClient;
     private readonly string _bucket;
     private readonly string _publicEndpoint;
+    private readonly string _imgproxyEndpoint;
+    private readonly string _imgproxySourceEndpoint;
 
-    public StorageService(IAmazonS3 s3, IConfiguration config)
+    public StorageService(IAmazonS3 s3, IHttpClientFactory httpClientFactory, IConfiguration config)
     {
         _s3 = s3;
+        _httpClient = httpClientFactory.CreateClient();
         _bucket = config["Minio:Bucket"] ?? "feed-files";
+        _imgproxyEndpoint = config["Imgproxy:Endpoint"] ?? "http://localhost:8081";
+        _imgproxySourceEndpoint =
+            $"http{(config.GetValue<bool>("Minio:UseSSL") ? "s" : "")}://{config["Minio:Endpoint"] ?? "localhost:9000"}";
 
         _publicEndpoint = config["Minio:PublicEndpoint"] ?? config["Minio:Endpoint"] ?? "localhost:9000";
         _publicS3 = string.IsNullOrWhiteSpace(_publicEndpoint)
@@ -114,7 +121,7 @@ public class StorageService : IStorageService
 
     public string GetVideoPreviewObjectKey(string objectKey) => $"previews/{objectKey}.mp4";
 
-    public async Task<string?> CreateImagePreviewAsync(string sourceKey, string contentType)
+    public async Task<ImagePreviewResult?> CreateImagePreviewAsync(string sourceKey, string contentType)
     {
         if (!contentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
             return null;
@@ -123,23 +130,36 @@ public class StorageService : IStorageService
         try
         {
             await _s3.GetObjectMetadataAsync(_bucket, previewKey);
-            return previewKey;
+            return new ImagePreviewResult(previewKey, 0, 0);
         }
         catch (AmazonS3Exception exception) when (exception.StatusCode == System.Net.HttpStatusCode.NotFound)
         {
         }
 
-        using var source = await _s3.GetObjectAsync(_bucket, sourceKey);
-        using var image = await Image.LoadAsync(source.ResponseStream);
-        var targetWidth = Math.Min(360, image.Width);
-        var targetHeight = Math.Max(1, (int)Math.Round(image.Height * (targetWidth / (double)image.Width)));
-        image.Mutate(context => context.Resize(targetWidth, targetHeight));
+        int originalWidth;
+        int originalHeight;
+        using (var source = await _s3.GetObjectAsync(_bucket, sourceKey))
+        {
+            var imageInfo = await Image.IdentifyAsync(source.ResponseStream)
+                ?? throw new InvalidOperationException($"Could not identify image {sourceKey}.");
+            originalWidth = imageInfo.Width;
+            originalHeight = imageInfo.Height;
+        }
+
+        var escapedKey = string.Join("/", sourceKey.Split('/').Select(Uri.EscapeDataString));
+        var sourceUrl = Uri.EscapeDataString(
+            $"{_imgproxySourceEndpoint}/{Uri.EscapeDataString(_bucket)}/{escapedKey}");
+        var imgproxyUrl = $"{_imgproxyEndpoint.TrimEnd('/')}/insecure/rs:fit:360:0/q:82/plain/{sourceUrl}@webp";
+        using var response = await _httpClient.GetAsync(
+            imgproxyUrl,
+            HttpCompletionOption.ResponseHeadersRead);
+        response.EnsureSuccessStatusCode();
 
         await using var preview = new MemoryStream();
-        await image.SaveAsync(preview, new WebpEncoder { Quality = 82 });
+        await response.Content.CopyToAsync(preview);
         preview.Position = 0;
         await UploadObjectAsync(previewKey, preview, "image/webp");
-        return previewKey;
+        return new ImagePreviewResult(previewKey, originalWidth, originalHeight);
     }
 
     public async Task<string?> CreateVideoPreviewAsync(string sourceKey, string contentType)

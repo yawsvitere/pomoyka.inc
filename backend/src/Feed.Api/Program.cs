@@ -167,6 +167,7 @@ builder.Services.AddSingleton<IAmazonS3>(_ =>
         s3Config);
 });
 builder.Services.AddScoped<IStorageService, StorageService>();
+builder.Services.AddHttpClient();
 builder.Services.AddScoped<AvatarImageOptimizer>();
 builder.Services.AddScoped<IJwtService, JwtService>();
 builder.Services.AddScoped<InviteCodeService>();
@@ -176,6 +177,9 @@ builder.Services.AddScoped<PomoykaService>();
 
 builder.Services.AddHostedService<ArchivalBackgroundService>();
 builder.Services.AddHostedService<FileMetadataBackfillService>();
+builder.Services.AddSingleton<ImagePreviewBackgroundService>();
+builder.Services.AddHostedService(services =>
+    services.GetRequiredService<ImagePreviewBackgroundService>());
 
 
 builder.Services.AddSignalR();

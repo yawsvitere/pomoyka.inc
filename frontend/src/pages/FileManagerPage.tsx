@@ -354,24 +354,46 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
       percent: 0,
     });
     try {
-      for (let index = 0; index < uploadFiles.length; index += 1) {
-        const file = uploadFiles[index];
+      const fileProgress = uploadFiles.map(() => 0);
+      let nextFileIndex = 0;
+      let completed = 0;
+      const updateProgress = (currentFile: string) => {
         setUploadProgress({
-          currentFile: file.name,
-          completed: index,
+          currentFile,
+          completed,
           total: uploadFiles.length,
-          percent: Math.round((index / uploadFiles.length) * 100),
+          percent: Math.round(
+            fileProgress.reduce((total, progress) => total + progress, 0) /
+              uploadFiles.length,
+          ),
         });
-        await filesApi.uploadFile(file, folderId, (filePercent) => {
-          setUploadProgress({
-            currentFile: file.name,
-            completed: index,
-            total: uploadFiles.length,
-            percent: Math.round(
-              ((index + filePercent / 100) / uploadFiles.length) * 100,
-            ),
+      };
+      const uploadWorker = async () => {
+        while (nextFileIndex < uploadFiles.length) {
+          const index = nextFileIndex;
+          nextFileIndex += 1;
+          const file = uploadFiles[index];
+          updateProgress(file.name);
+          await filesApi.uploadFile(file, folderId, (filePercent) => {
+            fileProgress[index] = filePercent;
+            updateProgress(file.name);
           });
-        });
+          fileProgress[index] = 100;
+          completed += 1;
+          updateProgress(file.name);
+        }
+      };
+      const results = await Promise.allSettled(
+        Array.from(
+          { length: Math.min(3, uploadFiles.length) },
+          () => uploadWorker(),
+        ),
+      );
+      const failedUpload = results.find(
+        (result) => result.status === "rejected",
+      );
+      if (failedUpload?.status === "rejected") {
+        throw failedUpload.reason;
       }
       await reload();
     } catch (reason: any) {
