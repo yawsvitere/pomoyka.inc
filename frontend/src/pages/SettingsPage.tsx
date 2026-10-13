@@ -5,6 +5,7 @@ import { useAuth } from "../context/AuthContext";
 import * as authApi from "../api/auth";
 import pencilIcon from "../assets/icons/pencil.svg";
 import { AvatarMedia } from "../components/ui/AvatarMedia";
+import { useToast } from "../components/ui/useToast";
 import { getBrowserFileUrl } from "../utils/fileUrl";
 import "../styles/pages/settings.css";
 
@@ -50,6 +51,7 @@ async function createCroppedImage(imageSrc: string, crop: Area) {
 
 export function SettingsPage() {
   const { user, updateUser, logout } = useAuth();
+  const { notify } = useToast();
   const savedDisplayName = user?.displayName ?? "";
   const savedNicknameColor = user?.nicknameColor ?? "#4f46e5";
   const savedAbout = user?.about ?? "";
@@ -58,8 +60,6 @@ export function SettingsPage() {
   const [about, setAbout] = useState(savedAbout);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
-  const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
   const [cropTarget, setCropTarget] = useState<CropTarget | null>(null);
   const [cropImage, setCropImage] = useState<string | null>(null);
   const [cropVideo, setCropVideo] = useState<string | null>(null);
@@ -80,8 +80,6 @@ export function SettingsPage() {
 
   async function saveChanges(e: React.FormEvent) {
     e.preventDefault();
-    setError("");
-    setMessage("");
 
     try {
       const profileChanged =
@@ -104,9 +102,9 @@ export function SettingsPage() {
 
       setCurrentPassword("");
       setNewPassword("");
-      setMessage("Изменения сохранены");
+      notify("success", "Изменения сохранены");
     } catch {
-      setError("Не удалось сохранить изменения");
+      notify("error", "Не удалось сохранить изменения");
     }
   }
 
@@ -140,7 +138,6 @@ export function SettingsPage() {
 
   async function uploadCroppedImage() {
     if ((!cropImage && !cropVideo) || !cropTarget || !croppedAreaPixels) return;
-    setError("");
     setIsUploading(true);
     try {
       if (cropTarget === "avatar") {
@@ -157,18 +154,19 @@ export function SettingsPage() {
           const avatarUrl = await authApi.uploadAvatar(file);
           updateUser({ ...user!, avatarUrl });
         }
-        setMessage("Аватар обновлён");
+        notify("success", "Аватар обновлён");
       } else {
         if (!cropImage) return;
         const blob = await createCroppedImage(cropImage, croppedAreaPixels);
         const file = new File([blob], cropFileName, { type: "image/jpeg" });
         const bannerUrl = await authApi.uploadBanner(file);
         updateUser({ ...user!, bannerUrl: `${bannerUrl}?v=${Date.now()}` });
-        setMessage("Баннер обновлён");
+        notify("success", "Баннер обновлён");
       }
       closeCropper();
     } catch {
-      setError(
+      notify(
+        "error",
         `Не удалось загрузить ${cropTarget === "avatar" ? "аватар" : "баннер"}`,
       );
     } finally {
@@ -353,8 +351,6 @@ export function SettingsPage() {
                   setAbout(savedAbout);
                   setCurrentPassword("");
                   setNewPassword("");
-                  setError("");
-                  setMessage("");
                 }}
               >
                 Отменить
@@ -363,14 +359,6 @@ export function SettingsPage() {
           )}
         </form>
 
-        {message && (
-          <p className="settings-message settings-message--success">
-            {message}
-          </p>
-        )}
-        {error && (
-          <p className="settings-message settings-message--error">{error}</p>
-        )}
         <button className="settings-logout" type="button" onClick={logout}>
           Выйти
         </button>

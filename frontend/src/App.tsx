@@ -3,6 +3,7 @@ import { lazy, Suspense, useEffect } from "react";
 
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { ErrorPage } from "./components/ui/ErrorPage";
+import { ToastProvider } from "./components/ui/Toast";
 
 const LoginPage = lazy(() =>
   import("./pages/LoginPage").then(({ LoginPage }) => ({ default: LoginPage })),
@@ -337,7 +338,9 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <AppRoutes />
+        <ToastProvider>
+          <AppRoutes />
+        </ToastProvider>
       </AuthProvider>
     </BrowserRouter>
   );

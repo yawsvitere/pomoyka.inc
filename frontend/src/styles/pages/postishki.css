@@ -188,13 +188,8 @@
   text-decoration: none;
 }
 
-.postishki-empty,
-.postishki-error {
+.postishki-empty {
   color: var(--color-text-dim);
-}
-
-.postishki-error {
-  color: var(--color-danger);
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -1,7 +1,7 @@
 .media-modal {
   position: fixed;
   inset: 0;
-  z-index: 2147483647;
+  z-index: 2147483646;
   display: grid;
   place-items: center;
   padding: 0;

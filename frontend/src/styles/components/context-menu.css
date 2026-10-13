@@ -5,7 +5,7 @@
 .context-menu-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 2147483646;
+  z-index: 2147483644;
   background: transparent;
   pointer-events: auto;
   touch-action: none;
@@ -13,7 +13,7 @@
 
 .context-menu-popover {
   position: fixed;
-  z-index: 2147483647;
+  z-index: 2147483645;
   display: flex;
   flex-direction: column;
   align-items: flex-start;

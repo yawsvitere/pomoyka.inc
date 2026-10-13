@@ -4,6 +4,7 @@ import * as postsApi from "../api/posts";
 import type { Comment, Post } from "../api/types";
 import { useAuth } from "../context/AuthContext";
 import { FeedComposer } from "../components/feed/FeedComposer";
+import { useToast } from "../components/ui/useToast";
 import { FeedSidebar } from "../components/feed/FeedSidebar";
 import { PostCard } from "../components/feed/PostCard";
 import { InfiniteScroll } from "../components/ui/InfiniteScroll";
@@ -88,6 +89,7 @@ function updatePostNicknameColor(
 }
 
 export function FeedPage() {
+  const { notify } = useToast();
   const { user } = useAuth();
   const [posts, setPosts] = useState<Post[]>([]);
   const [postishki, setPostishki] = useState<Post[]>([]);
@@ -96,7 +98,6 @@ export function FeedPage() {
   );
   const [isLoading, setIsLoading] = useState(true);
   const [hasMore, setHasMore] = useState(true);
-  const [error, setError] = useState<string>("");
   const [openComments, setOpenComments] = useState<Set<string>>(new Set());
   const nextPageRef = useRef(1);
 
@@ -294,7 +295,6 @@ export function FeedPage() {
     if (isFirstPage) {
       setIsLoading(true);
     }
-    setError("");
     try {
       const data = await postsApi.getFeed(page, FEED_PAGE_SIZE);
 
@@ -324,13 +324,13 @@ export function FeedPage() {
       if (isFirstPage) {
         setPosts([]);
       }
-      setError("Не удалось загрузить ленту");
+      notify("error", "Не удалось загрузить ленту");
     } finally {
       if (isFirstPage) {
         setIsLoading(false);
       }
     }
-  }, []);
+  }, [notify]);
 
   const handleLoadMore = useCallback(
     () => loadFeed(nextPageRef.current),
@@ -338,7 +338,6 @@ export function FeedPage() {
   );
 
   async function handlePostSubmit(text: string, selectedFiles: File[]) {
-    setError("");
     const newPost = await postsApi.createPost(text);
     let postForFeed = newPost;
     if (selectedFiles.length > 0) {
@@ -354,6 +353,7 @@ export function FeedPage() {
           )
         : sortPostsNewestFirst([...currentPosts, postForFeed]),
     );
+    notify("success", "Пост опубликован");
   }
 
   async function handleCommentSubmit(postId: string, commentText: string) {
@@ -368,8 +368,9 @@ export function FeedPage() {
             : post,
         ),
       );
+      notify("success", "Комментарий добавлен");
     } catch {
-      setError("Не удалось добавить комментарий");
+      notify("error", "Не удалось добавить комментарий");
     }
   }
 
@@ -388,8 +389,9 @@ export function FeedPage() {
       setPosts((currentPosts) =>
         currentPosts.filter((post) => post.id !== postId),
       );
+      notify("success", "Пост удалён");
     } catch {
-      setError("Не удалось удалить пост");
+      notify("error", "Не удалось удалить пост");
     }
   }
 
@@ -397,9 +399,10 @@ export function FeedPage() {
     <div className="feed-page">
       <div className="feed-layout">
         <section className="feed-main">
-          {error && <div className="feed-error">{error}</div>}
-
-          <FeedComposer onSubmit={handlePostSubmit} onError={setError}>
+          <FeedComposer
+            onSubmit={handlePostSubmit}
+            onError={(message) => notify("error", message)}
+          >
             <InfiniteScroll
               hasMore={hasMore}
               isLoading={isLoading}

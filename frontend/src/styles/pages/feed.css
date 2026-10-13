@@ -289,16 +289,6 @@
   font-weight: 600;
 }
 
-.feed-error {
-  margin-bottom: 16px;
-  padding: 10px 14px;
-  border: 1px solid var(--color-danger-border);
-  border-radius: var(--radius-md);
-  background: var(--color-danger-bg);
-  color: var(--color-danger);
-  font-size: 13px;
-}
-
 .feed-state {
   color: var(--color-text-dim);
   text-align: center;

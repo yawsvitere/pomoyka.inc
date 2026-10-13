@@ -8,6 +8,7 @@ import type { Post, User } from "../api/types";
 import { Spinner } from "../components/ui/Spinner";
 import { PostCard } from "../components/feed/PostCard";
 import { MediaModal } from "../components/ui/MediaModal";
+import { useToast } from "../components/ui/useToast";
 import { getBrowserFileUrl } from "../utils/fileUrl";
 import { AvatarMedia } from "../components/ui/AvatarMedia";
 import folderIcon from "../assets/icons/folder.svg";
@@ -247,6 +248,7 @@ function ProfileFileRow({ file }: { file: filesApi.UserFile }) {
 }
 
 export function ProfilePage() {
+  const { notify } = useToast();
   const { userId: displayName } = useParams();
   const [posts, setPosts] = useState<Post[]>([]);
   const [profile, setProfile] = useState<User | null>(null);
@@ -254,7 +256,9 @@ export function ProfilePage() {
   const [folders, setFolders] = useState<filesApi.FileFolder[]>([]);
   const [folderId, setFolderId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [failedDisplayName, setFailedDisplayName] = useState<string | null>(
+    null,
+  );
 
   useEffect(() => {
     if (!displayName) {
@@ -275,8 +279,6 @@ export function ProfilePage() {
     } else {
       setIsLoading(true);
     }
-    setError("");
-
     const isCacheFresh =
       cached && Date.now() - cached.updatedAt < PROFILE_CACHE_TTL_MS;
     if (isCacheFresh)
@@ -295,7 +297,8 @@ export function ProfilePage() {
       })
       .catch(() => {
         if (active && !hasCachedData) {
-          setError("Не удалось загрузить профиль");
+          setFailedDisplayName(displayName);
+          notify("error", "Не удалось загрузить профиль");
         }
       })
       .finally(() => {
@@ -305,7 +308,7 @@ export function ProfilePage() {
     return () => {
       active = false;
     };
-  }, [displayName]);
+  }, [displayName, notify]);
 
   const currentFolder = folders.find((folder) => folder.id === folderId);
   const visibleFolders = useMemo(
@@ -323,8 +326,6 @@ export function ProfilePage() {
         <p className="profile-loading">
           <Spinner />
         </p>
-      ) : error ? (
-        <p className="auth-error">{error}</p>
       ) : profile ? (
         <>
           <header className="profile-header">
@@ -474,7 +475,7 @@ export function ProfilePage() {
             )}
           </section>
         </>
-      ) : (
+      ) : failedDisplayName === displayName ? null : (
         <p>Профиль не найден.</p>
       )}
     </div>

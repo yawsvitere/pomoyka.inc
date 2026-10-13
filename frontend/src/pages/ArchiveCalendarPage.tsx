@@ -1,8 +1,9 @@
-import { useState, useEffect } from "react";
+import { useCallback, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import * as archiveApi from "../api/archive";
 import { Calendar } from "../components/calendar/calendar.tsx";
 import type { CalendarDayData } from "../components/calendar/calendar.tsx";
+import { useToast } from "../components/ui/useToast";
 import "../styles/pages/archive-calendar.css";
 
 const MONTH_NAMES = [
@@ -28,26 +29,25 @@ export function ArchiveCalendarPage() {
   const [calendar, setCalendar] =
     useState<archiveApi.ArchiveCalendarMonth | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string>("");
+  const { notify } = useToast();
   const navigate = useNavigate();
 
-  useEffect(() => {
-    loadCalendar();
-  }, [year, month]);
-
-  async function loadCalendar() {
+  const loadCalendar = useCallback(async () => {
     setIsLoading(true);
-    setError("");
     try {
       const data = await archiveApi.getArchiveCalendar(year, month);
       setCalendar(data);
     } catch (err) {
       console.error("Error loading calendar:", err);
-      setError("Не удалось загрузить календарь архива");
+      notify("error", "Не удалось загрузить календарь архива");
     } finally {
       setIsLoading(false);
     }
-  }
+  }, [year, month, notify]);
+
+  useEffect(() => {
+    void loadCalendar();
+  }, [loadCalendar]);
 
   function handlePreviousMonth() {
     if (month === 1) {
@@ -114,10 +114,6 @@ export function ArchiveCalendarPage() {
 
   return (
     <div className="archive-calendar-page">
-
-
-      {error && <div className="archive-error">{error}</div>}
-
       <div className="calendar-container">
         <Calendar
           month={month}
@@ -141,5 +137,3 @@ export function ArchiveCalendarPage() {
     </div>
   );
 }
-
-

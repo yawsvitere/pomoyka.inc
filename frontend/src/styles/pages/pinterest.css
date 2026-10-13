@@ -66,10 +66,6 @@
   font-size: 14px;
 }
 
-.pinterest-page-error {
-  color: var(--color-danger);
-}
-
 @media (max-width: 700px) {
   .pinterest-page {
     padding: 0;

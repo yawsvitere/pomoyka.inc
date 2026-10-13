@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import * as filesApi from "../api/files";
 import { Pinterest } from "../components/ui/Pinterest";
 import { Spinner } from "../components/ui/Spinner";
+import { useToast } from "../components/ui/useToast";
 import "../styles/pages/pinterest.css";
 
 function shuffleMedia(items: filesApi.PinterestMedia[]) {
@@ -14,9 +15,10 @@ function shuffleMedia(items: filesApi.PinterestMedia[]) {
 }
 
 export function PinterestPage() {
+  const { notify } = useToast();
   const [media, setMedia] = useState<filesApi.PinterestMedia[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [loadFailed, setLoadFailed] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -25,7 +27,10 @@ export function PinterestPage() {
         if (active) setMedia(shuffleMedia(items));
       })
       .catch(() => {
-        if (active) setError("Не удалось загрузить Pinterest");
+        if (active) {
+          setLoadFailed(true);
+          notify("error", "Не удалось загрузить Pinterest");
+        }
       })
       .finally(() => {
         if (active) setIsLoading(false);
@@ -33,14 +38,10 @@ export function PinterestPage() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [notify]);
 
   if (isLoading) {
     return <div className="pinterest-page-state"><Spinner label="Загрузка Pinterest" /></div>;
-  }
-
-  if (error) {
-    return <div className="pinterest-page-state pinterest-page-error">{error}</div>;
   }
 
   const images = media.map((item) => ({
@@ -59,7 +60,7 @@ export function PinterestPage() {
       </header>
       {images.length > 0 ? (
         <Pinterest images={images} />
-      ) : (
+      ) : loadFailed ? null : (
         <p className="pinterest-page-empty">Пока нет доступных изображений и видео</p>
       )}
     </section>

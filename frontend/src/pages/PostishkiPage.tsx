@@ -4,6 +4,7 @@ import * as postsApi from "../api/posts";
 import type { Post } from "../api/types";
 import { ContextMenu } from "../components/feed/ContextMenu";
 import { Spinner } from "../components/ui/Spinner";
+import { useToast } from "../components/ui/useToast";
 import { useAuth } from "../context/AuthContext";
 import { getBrowserFileUrl } from "../utils/fileUrl";
 import { AvatarMedia } from "../components/ui/AvatarMedia";
@@ -121,9 +122,10 @@ function PostishkiCard({
 }
 
 export function PostishkiPage() {
+  const { notify } = useToast();
   const [posts, setPosts] = useState<Post[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [loadFailed, setLoadFailed] = useState(false);
 
   async function deletePost(postId: string) {
     try {
@@ -131,8 +133,9 @@ export function PostishkiPage() {
       setPosts((currentPosts) =>
         currentPosts.filter((post) => post.id !== postId),
       );
+      notify("success", "Постишка удалена");
     } catch {
-      setError("Не удалось удалить постишку");
+      notify("error", "Не удалось удалить постишку");
     }
   }
 
@@ -140,9 +143,12 @@ export function PostishkiPage() {
     void postsApi
       .getPostishki()
       .then(setPosts)
-      .catch(() => setError("Не удалось загрузить постишки"))
+      .catch(() => {
+        setLoadFailed(true);
+        notify("error", "Не удалось загрузить постишки");
+      })
       .finally(() => setIsLoading(false));
-  }, []);
+  }, [notify]);
 
   if (isLoading) {
     return (
@@ -155,8 +161,7 @@ export function PostishkiPage() {
   return (
     <section className="postishki-page">
       <header className="postishki-header"></header>
-      {error && <p className="postishki-error">{error}</p>}
-      {!error && posts.length === 0 && (
+      {!loadFailed && posts.length === 0 && (
         <p className="postishki-empty">Постишек пока нет.</p>
       )}
       <div className="postishki-list">

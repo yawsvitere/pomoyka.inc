@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { PhotoSlider } from "react-photo-view";
 import * as filesApi from "../api/files";
 import { ContextMenu } from "../components/feed/ContextMenu";
 import { AlertDialog } from "../components/ui/AlertDialog";
 import { MediaModal } from "../components/ui/MediaModal";
+import { useToast } from "../components/ui/useToast";
 import copyIcon from "../assets/icons/copy.svg";
 import deleteIcon from "../assets/icons/delete.svg";
 import downloadIcon from "../assets/icons/download.svg";
@@ -225,6 +227,7 @@ const fileFilterLabels: Record<FileFilter, string> = {
 };
 
 export function FileManagerPage({ shared = false }: { shared?: boolean }) {
+  const { notify } = useToast();
   const [library, setLibrary] = useState<filesApi.Library>({
     folders: [],
     files: [],
@@ -232,7 +235,6 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
   const [quota, setQuota] = useState<filesApi.StorageQuota | null>(null);
   const [folderId, setFolderId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [error, setError] = useState("");
   const [isDragging, setIsDragging] = useState(false);
   const [folderDialog, setFolderDialog] = useState(false);
   const [folderName, setFolderName] = useState("");
@@ -272,8 +274,10 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
       ]);
       setLibrary(nextLibrary);
       setQuota(nextQuota);
+      return true;
     } catch {
-      setError("Не удалось загрузить файловую библиотеку");
+      notify("error", "Не удалось загрузить файловую библиотеку");
+      return false;
     }
   }
   useEffect(() => {
@@ -344,7 +348,6 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
   }, [folderId, search]);
 
   async function upload(files: FileList | File[]) {
-    setError("");
     const uploadFiles = Array.from(files);
     if (uploadFiles.length === 0) return;
     setUploadProgress({
@@ -384,9 +387,8 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
         }
       };
       const results = await Promise.allSettled(
-        Array.from(
-          { length: Math.min(3, uploadFiles.length) },
-          () => uploadWorker(),
+        Array.from({ length: Math.min(3, uploadFiles.length) }, () =>
+          uploadWorker(),
         ),
       );
       const failedUpload = results.find(
@@ -395,15 +397,24 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
       if (failedUpload?.status === "rejected") {
         throw failedUpload.reason;
       }
-      await reload();
+      if (await reload()) {
+        notify(
+          "success",
+          uploadFiles.length === 1
+            ? "Файл загружен"
+            : `Загружено файлов: ${uploadFiles.length}`,
+        );
+      }
     } catch (reason: any) {
-      setError(reason?.response?.data?.message ?? "Не удалось загрузить файл");
+      notify(
+        "error",
+        reason?.response?.data?.message ?? "Не удалось загрузить файл",
+      );
     } finally {
       setUploadProgress(null);
     }
   }
   async function pasteImagesFromClipboard() {
-    setError("");
     try {
       if (!navigator.clipboard?.read) {
         throw new Error("Clipboard read is not supported");
@@ -425,12 +436,12 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
       }
 
       if (pastedFiles.length === 0) {
-        setError("В буфере обмена нет изображения");
+        notify("error", "В буфере обмена нет изображения");
         return;
       }
       await upload(pastedFiles);
     } catch {
-      setError("Не удалось вставить изображение из буфера обмена");
+      notify("error", "Не удалось вставить изображение из буфера обмена");
     }
   }
 
@@ -476,21 +487,40 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
       }));
       setFolderName("");
       setFolderDialog(false);
+      notify("success", "Папка создана");
     } catch (reason: any) {
-      setError(reason?.response?.data?.message ?? "Не удалось создать папку");
+      notify(
+        "error",
+        reason?.response?.data?.message ?? "Не удалось создать папку",
+      );
     }
   }
   async function setFileAccess(
     file: filesApi.UserFile,
     accessLevel: filesApi.FileAccessLevel,
   ) {
-    const updated = await filesApi.setFileVisibility(file.id, accessLevel);
-    setLibrary((current) => ({
-      ...current,
-      files: current.files.map((item) =>
-        item.id === file.id ? updated : item,
-      ),
-    }));
+    try {
+      const updated = await filesApi.setFileVisibility(file.id, accessLevel);
+      setLibrary((current) => ({
+        ...current,
+        files: current.files.map((item) =>
+          item.id === file.id ? updated : item,
+        ),
+      }));
+      notify(
+        "success",
+        accessLevel === 2
+          ? "Файл доступен всем"
+          : accessLevel === 1
+            ? "Файл доступен по ссылке"
+            : "Доступ к файлу ограничен",
+      );
+    } catch (reason: any) {
+      notify(
+        "error",
+        reason?.response?.data?.message ?? "Не удалось изменить доступ",
+      );
+    }
   }
   async function toggleFile(file: filesApi.UserFile) {
     await setFileAccess(file, file.accessLevel === 2 ? 0 : 2);
@@ -499,13 +529,30 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
     item: filesApi.FileFolder,
     accessLevel: filesApi.FileAccessLevel,
   ) {
-    await filesApi.setFolderVisibility(item.id, accessLevel);
-    setLibrary((current) => ({
-      ...current,
-      folders: current.folders.map((folderItem) =>
-        folderItem.id === item.id ? { ...folderItem, accessLevel } : folderItem,
-      ),
-    }));
+    try {
+      await filesApi.setFolderVisibility(item.id, accessLevel);
+      setLibrary((current) => ({
+        ...current,
+        folders: current.folders.map((folderItem) =>
+          folderItem.id === item.id
+            ? { ...folderItem, accessLevel }
+            : folderItem,
+        ),
+      }));
+      notify(
+        "success",
+        accessLevel === 2
+          ? "Папка доступна всем"
+          : accessLevel === 1
+            ? "Папка доступна по ссылке"
+            : "Доступ к папке ограничен",
+      );
+    } catch (reason: any) {
+      notify(
+        "error",
+        reason?.response?.data?.message ?? "Не удалось изменить доступ",
+      );
+    }
   }
   async function toggleFolder(item: filesApi.FileFolder) {
     await setFolderAccess(item, item.accessLevel === 2 ? 0 : 2);
@@ -520,24 +567,25 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
         url,
       });
     } catch {
-      setError("Не удалось открыть файл");
+      notify("error", "Не удалось открыть файл");
     }
   }
   async function copyShareUrl(url: string) {
     try {
       await navigator.clipboard.writeText(url);
+      notify("success", "Ссылка скопирована");
     } catch {
-      setError("Не удалось скопировать ссылку");
+      notify("error", "Не удалось скопировать ссылку");
     }
   }
   async function moveFile(fileId: string, targetFolderId: string | null) {
-    setError("");
     setDragOverFolderId(null);
     try {
       await filesApi.moveFile(fileId, targetFolderId);
-      await reload();
+      if (await reload()) notify("success", "Файл перемещён");
     } catch (reason: any) {
-      setError(
+      notify(
+        "error",
         reason?.response?.data?.message ?? "Не удалось переместить файл",
       );
     }
@@ -554,7 +602,6 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
   }
   async function confirmRename() {
     if (!renameTarget || !renameName.trim()) return;
-    setError("");
     try {
       if (renameTarget.type === "folder") {
         await filesApi.renameFolder(renameTarget.item.id, renameName);
@@ -563,16 +610,25 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
       }
       setRenameTarget(null);
       setRenameName("");
-      await reload();
+      if (await reload()) {
+        notify(
+          "success",
+          renameTarget.type === "folder"
+            ? "Папка переименована"
+            : "Файл переименован",
+        );
+      }
     } catch (reason: any) {
-      setError(reason?.response?.data?.message ?? "Не удалось переименовать");
+      notify(
+        "error",
+        reason?.response?.data?.message ?? "Не удалось переименовать",
+      );
     }
   }
   async function confirmDelete() {
     const action = pendingDelete;
     setPendingDelete(null);
     if (!action) return;
-    setError("");
     try {
       if (action.type === "folder") {
         await filesApi.deleteFolder(action.item.id);
@@ -583,9 +639,19 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
         await Promise.all(action.ids.map((id) => filesApi.deleteFile(id)));
         setSelected(new Set());
       }
-      await reload();
+      if (await reload()) {
+        notify(
+          "success",
+          action.type === "folder"
+            ? "Папка удалена"
+            : action.type === "file"
+              ? "Файл удалён"
+              : "Файлы удалены",
+        );
+      }
     } catch (reason: any) {
-      setError(
+      notify(
+        "error",
         reason?.response?.data?.message ??
           (action.type === "folder"
             ? "Не удалось удалить папку"
@@ -594,15 +660,17 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
     }
   }
   async function bulkSetVisibility(accessLevel: filesApi.FileAccessLevel) {
-    setError("");
     try {
       await Promise.all(
         [...selected].map((id) => filesApi.setFileVisibility(id, accessLevel)),
       );
       setSelected(new Set());
-      await reload();
+      if (await reload()) notify("success", "Доступ обновлён");
     } catch (reason: any) {
-      setError(reason?.response?.data?.message ?? "Не удалось изменить доступ");
+      notify(
+        "error",
+        reason?.response?.data?.message ?? "Не удалось изменить доступ",
+      );
     }
   }
   function bulkDelete() {
@@ -660,8 +728,6 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
         ]}
       >
         <main className="fm-main">
-          {error && <div className="fm-error">{error}</div>}
-
           <input
             ref={uploadRef}
             type="file"
@@ -1497,73 +1563,140 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
         onConfirm={() => void confirmDelete()}
       />
 
-      {uploadProgress && (
-        <div className="fm-modal-backdrop fm-upload-backdrop">
-          <div
-            className="fm-modal fm-upload-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="upload-progress-title"
-          >
-            <h2 id="upload-progress-title">Загрузка файлов</h2>
-            <p className="fm-upload-status">
-              {uploadProgress.completed} из {uploadProgress.total} загружено
-            </p>
-            <p className="fm-upload-file" title={uploadProgress.currentFile}>
-              {uploadProgress.currentFile}
-            </p>
+      {uploadProgress &&
+        createPortal(
+          <div className="fm-modal-backdrop fm-upload-backdrop">
             <div
-              className="fm-upload-progress"
-              role="progressbar"
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={uploadProgress.percent}
+              className="fm-modal fm-upload-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="upload-progress-title"
             >
-              <span style={{ width: `${uploadProgress.percent}%` }} />
-            </div>
-            <strong className="fm-upload-percent">
-              {uploadProgress.percent}%
-            </strong>
-          </div>
-        </div>
-      )}
+              <div className="fm-modal-head">
+                <span className="fm-modal-icon fm-modal-icon-spin">
+                  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path
+                      d="M12 16V5m0 0-4 4m4-4 4 4M5 19h14"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </span>
+                <div className="fm-modal-titles">
+                  <h2 id="upload-progress-title">Загрузка файлов</h2>
+                  <p className="fm-modal-subtitle">
+                    {uploadProgress.completed} из {uploadProgress.total}{" "}
+                    загружено
+                  </p>
+                </div>
+                <strong className="fm-upload-percent">
+                  {uploadProgress.percent}%
+                </strong>
+              </div>
 
-      {folderDialog && (
-        <div
-          className="fm-modal-backdrop"
-          onClick={() => setFolderDialog(false)}
-        >
-          <div
-            className="fm-modal"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <h2>Новая папка</h2>
-            <input
-              autoFocus
-              value={folderName}
-              onChange={(event) => setFolderName(event.target.value)}
-              onKeyDown={(event) =>
-                event.key === "Enter" && void createFolder()
-              }
-              placeholder="Например, фотографии"
-            />
-            <div>
-              <button
-                className="btn btn-secondary btn-sm"
-                onClick={() => setFolderDialog(false)}
+              <div
+                className="fm-upload-progress"
+                role="progressbar"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={uploadProgress.percent}
               >
-                Отмена
-              </button>
-              <button
-                className="btn btn-primary btn-sm"
-                onClick={() => void createFolder()}
-              >
-                Создать
-              </button>
+                <span style={{ width: `${uploadProgress.percent}%` }} />
+              </div>
+
+              <div className="fm-upload-current">
+                <span className="fm-upload-current-dot" />
+                <span
+                  className="fm-upload-file"
+                  title={uploadProgress.currentFile}
+                >
+                  {uploadProgress.currentFile}
+                </span>
+              </div>
             </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body,
+        )}
+
+      {folderDialog &&
+        createPortal(
+          <div
+            className="fm-modal-backdrop"
+            onClick={() => setFolderDialog(false)}
+          >
+            <div
+              className="fm-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="new-folder-title"
+              onClick={(event) => event.stopPropagation()}
+              onKeyDown={(event) =>
+                event.key === "Escape" && setFolderDialog(false)
+              }
+            >
+              <div className="fm-modal-head">
+                <span className="fm-modal-icon">
+                  <img src={folderIcon} alt="" />
+                </span>
+                <div className="fm-modal-titles">
+                  <h2 id="new-folder-title">Новая папка</h2>
+                  <p className="fm-modal-subtitle">
+                    Дайте папке понятное название
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="fm-modal-close"
+                  aria-label="Закрыть"
+                  onClick={() => setFolderDialog(false)}
+                >
+                  <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                    <path
+                      d="m5 5 10 10M15 5 5 15"
+                      stroke="currentColor"
+                      strokeWidth="1.7"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                </button>
+              </div>
+
+              <label className="fm-field">
+                <span className="fm-field-label">Название</span>
+                <input
+                  autoFocus
+                  value={folderName}
+                  onChange={(event) => setFolderName(event.target.value)}
+                  onKeyDown={(event) =>
+                    event.key === "Enter" && void createFolder()
+                  }
+                  placeholder="Например, фотографии"
+                />
+              </label>
+
+              <div className="fm-modal-actions">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setFolderDialog(false)}
+                >
+                  Отмена
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  disabled={!folderName.trim()}
+                  onClick={() => void createFolder()}
+                >
+                  Создать
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }
