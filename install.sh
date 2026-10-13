@@ -27,8 +27,8 @@ if [[ ! "$admin_email" =~ ^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$ ]]; th
   exit 1
 fi
 
-read -r -p "Публичный адрес MinIO [localhost]: " minio_public_endpoint
-minio_public_endpoint="${minio_public_endpoint:-localhost}"
+read -r -p "Публичный адрес S3-хранилища [localhost]: " s3_public_endpoint
+s3_public_endpoint="${s3_public_endpoint:-localhost}"
 
 random_hex() {
   openssl rand -hex "$1"
@@ -41,8 +41,8 @@ fi
 
 postgres_user="feed_$(random_hex 6)"
 postgres_password="$(random_hex 32)"
-minio_root_user="minio$(random_hex 6)"
-minio_root_password="$(random_hex 32)"
+s3_access_key="storage$(random_hex 6)"
+s3_secret_key="$(random_hex 32)"
 jwt_secret="$(random_hex 64)"
 dataprotection_password="$(random_hex 64)"
 
@@ -53,10 +53,10 @@ POSTGRES_USER=$postgres_user
 POSTGRES_PASSWORD=$postgres_password
 POSTGRES_DB=feeddb
 
-MINIO_ROOT_USER=$minio_root_user
-MINIO_ROOT_PASSWORD=$minio_root_password
-MINIO_BUCKET=feed-files
-MINIO_PUBLIC_ENDPOINT=$minio_public_endpoint
+S3_ACCESS_KEY=$s3_access_key
+S3_SECRET_KEY=$s3_secret_key
+S3_BUCKET=feed-files
+S3_PUBLIC_ENDPOINT=$s3_public_endpoint
 
 JWT_SECRET=$jwt_secret
 ADMIN_EMAIL=$admin_email

@@ -2,7 +2,7 @@
 
 ## Стек
 
-ASP.NET Core 9 · EF Core 9 · PostgreSQL (Npgsql) · ASP.NET Identity (GUID keys) · JWT bearer · MinIO/S3 · SignalR · Swagger (dev)
+ASP.NET Core 9 · EF Core 9 · PostgreSQL (Npgsql) · ASP.NET Identity (GUID keys) · JWT bearer · RustFS (S3 API) · SignalR · Swagger (dev)
 
 ## Рантайм
 
@@ -42,7 +42,7 @@ backend/
 
 **Архив** — `PomoykaService` создаёт дневной контейнер и переносит устаревший контент в архив внутри serializable-транзакции. `ArchivalBackgroundService` догоняет пропущенные дни после рестарта и далее работает по расписанию. Архивные файлы переиспользуют storage key — бинарник не копируется.
 
-**Files** — `FilesController`: presigned uploads, личная библиотека, папки, видимость, метаданные, аватары, баннеры, скачивание. `StorageService` — MinIO через S3 API. `FileMetadataBackfillService` чинит/дозаполняет метаданные. `AvatarImageOptimizer` — обработка изображений.
+**Files** — `FilesController`: presigned uploads, личная библиотека, папки, видимость, метаданные, аватары, баннеры, скачивание. `StorageService` — RustFS через S3 API. `FileMetadataBackfillService` чинит/дозаполняет метаданные. `AvatarImageOptimizer` — обработка изображений.
 
 **Admin** — `AdminController`: запуск архивации, управление пользователями, инвайт-коды, баннеры, квоты, storage settings. Требует роль `Admin`.
 
@@ -66,7 +66,7 @@ Dev-контейнер применяет миграции на старте. П
 
 - `ConnectionStrings__DefaultConnection`
 - `Jwt__Secret`, `Jwt__Issuer`, `Jwt__Audience`
-- `Minio__Endpoint`, `Minio__PublicEndpoint`, `Minio__AccessKey`, `Minio__SecretKey`, `Minio__Bucket`, `Minio__UseSSL`
+- `Minio__Endpoint`, `Minio__PublicEndpoint`, `Minio__AccessKey`, `Minio__SecretKey`, `Minio__Bucket`, `Minio__UseSSL` (legacy configuration section; points to RustFS)
 - `ADMIN_EMAIL`
 
 Секреты — только в `.env`, никогда в коде.
@@ -78,7 +78,7 @@ cp .env.example .env
 docker compose up --build
 ```
 
-Dev-compose поднимает PostgreSQL, MinIO, imgproxy, API (`dotnet watch`). API — `http://localhost:5000`, MinIO — `9000`/`9001`.
+Dev-compose поднимает PostgreSQL, RustFS, imgproxy, API (`dotnet watch`). API — `http://localhost:5000`, S3 API — `localhost:9000`, консоль RustFS — `localhost:9001`.
 
 ## Добавление фичи
 
