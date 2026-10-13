@@ -11,6 +11,7 @@ import {
 import { Spinner } from "../components/ui/Spinner";
 import { getBrowserFileUrl } from "../utils/fileUrl";
 import { sanitizeEmbedHtml } from "../utils/safeHtml";
+import { getPostishkaUrl } from "../utils/postishkaUrl";
 import "../styles/pages/article.css";
 import "../styles/pages/rte-context-menu.css";
 
@@ -108,7 +109,7 @@ export function EditPostishkaPage() {
     setError("");
     try {
       const { html, files } = editorToContent(editor);
-      await postsApi.updateArticle(
+      const updatedPost = await postsApi.updateArticle(
         postId,
         title.trim(),
         description.trim(),
@@ -116,7 +117,7 @@ export function EditPostishkaPage() {
         files,
         accessLevel,
       );
-      navigate(`/posts/${postId}`);
+      navigate(getPostishkaUrl(updatedPost));
     } catch {
       setError("Не удалось сохранить постишку");
     } finally {
@@ -148,7 +149,7 @@ export function EditPostishkaPage() {
       />
       {error && <p className="article-error">{error}</p>}
       <div className="article-editor-actions">
-        <Link to={`/posts/${post.id}`}>Отмена</Link>
+        <Link to={getPostishkaUrl(post)}>Отмена</Link>
         <button className="btn btn-primary" type="button" disabled={!canSave} onClick={() => void save()}>
           {isSubmitting ? "Сохраняем..." : "Сохранить"}
         </button>

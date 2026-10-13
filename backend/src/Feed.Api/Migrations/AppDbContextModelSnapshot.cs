@@ -429,7 +429,7 @@ namespace Feed.Api.Migrations
                     b.ToTable("InviteCodes");
                 });
 
-            modelBuilder.Entity("Feed.Api.Models.Pomojka", b =>
+            modelBuilder.Entity("Feed.Api.Models.Pomoyka", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -454,7 +454,7 @@ namespace Feed.Api.Migrations
 
                     b.HasIndex("IsActive");
 
-                    b.ToTable("Pomojkas");
+                    b.ToTable("Pomojkas", (string)null);
                 });
 
             modelBuilder.Entity("Feed.Api.Models.Post", b =>
@@ -481,8 +481,9 @@ namespace Feed.Api.Migrations
                     b.Property<bool>("IsPostishka")
                         .HasColumnType("boolean");
 
-                    b.Property<Guid>("PomojkaId")
-                        .HasColumnType("uuid");
+                    b.Property<Guid>("PomoykaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("PomojkaId");
 
                     b.Property<string>("ReactionData")
                         .IsRequired()
@@ -490,6 +491,10 @@ namespace Feed.Api.Migrations
 
                     b.Property<Guid?>("RelatedPostId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("Slug")
+                        .HasMaxLength(220)
+                        .HasColumnType("character varying(220)");
 
                     b.Property<string>("Text")
                         .HasColumnType("text");
@@ -500,15 +505,19 @@ namespace Feed.Api.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("Slug")
+                        .IsUnique()
+                        .HasFilter("\"Slug\" IS NOT NULL");
+
                     b.HasIndex("IsPostishka", "CreatedAt");
 
-                    b.HasIndex("PomojkaId", "CreatedAt");
+                    b.HasIndex("PomoykaId", "CreatedAt");
 
                     b.HasIndex("AuthorId", "IsPostishka", "CreatedAt");
 
                     b.HasIndex("IsPostishka", "AccessLevel", "CreatedAt");
 
-                    b.HasIndex("PomojkaId", "IsPostishka", "CreatedAt");
+                    b.HasIndex("PomoykaId", "IsPostishka", "CreatedAt");
 
                     b.ToTable("Posts");
                 });
@@ -1008,15 +1017,15 @@ namespace Feed.Api.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("Feed.Api.Models.Pomojka", "Pomojka")
+                    b.HasOne("Feed.Api.Models.Pomoyka", "Pomoyka")
                         .WithMany("Posts")
-                        .HasForeignKey("PomojkaId")
+                        .HasForeignKey("PomoykaId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.Navigation("Author");
 
-                    b.Navigation("Pomojka");
+                    b.Navigation("Pomoyka");
                 });
 
             modelBuilder.Entity("Feed.Api.Models.PostBlock", b =>
@@ -1181,7 +1190,7 @@ namespace Feed.Api.Migrations
                     b.Navigation("Files");
                 });
 
-            modelBuilder.Entity("Feed.Api.Models.Pomojka", b =>
+            modelBuilder.Entity("Feed.Api.Models.Pomoyka", b =>
                 {
                     b.Navigation("Posts");
                 });

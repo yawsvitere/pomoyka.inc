@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { getPostishkaUrl } from "../../utils/postishkaUrl";
 import * as searchApi from "../../api/search";
 import searchIcon from "../../assets/icons/search.svg";
 import { AvatarMedia } from "../ui/AvatarMedia";
@@ -128,7 +129,11 @@ export function Search() {
               {results.posts.map((post) => (
                 <Link
                   key={post.id}
-                  to={`/posts/${post.id}`}
+                  to={
+                    post.isPostishka
+                      ? getPostishkaUrl({ slug: post.slug })
+                      : `/posts/${post.id}`
+                  }
                   onClick={() => setIsOpen(false)}
                 >
                   {post.title || post.text?.slice(0, 70) || "Без текста"}

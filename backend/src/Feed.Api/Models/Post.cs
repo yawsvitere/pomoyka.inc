@@ -12,6 +12,7 @@ public class Post
     public string? Text { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public bool IsPostishka { get; set; }
+    public string? Slug { get; set; }
     public Guid? RelatedPostId { get; set; }
 
     public List<PostFile> Files { get; set; } = new();

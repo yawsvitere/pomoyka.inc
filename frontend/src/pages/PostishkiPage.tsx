@@ -8,6 +8,7 @@ import { useToast } from "../components/ui/useToast";
 import { useAuth } from "../context/AuthContext";
 import { getBrowserFileUrl } from "../utils/fileUrl";
 import { AvatarMedia } from "../components/ui/AvatarMedia";
+import { getPostishkaUrl } from "../utils/postishkaUrl";
 import "../styles/pages/postishki.css";
 
 function getPostTitle(post: Post) {
@@ -83,7 +84,7 @@ function PostishkiCard({
         className={`postishki-card postishki-card-${index % 6}`}
         style={{ animationDelay: `${80 + index * 35}ms` }}
       >
-        <Link className="postishki-card-cover" to={`/posts/${post.id}`}>
+        <Link className="postishki-card-cover" to={getPostishkaUrl(post)}>
           {coverUrl ? (
             <img src={coverUrl} alt="" />
           ) : (
@@ -94,7 +95,7 @@ function PostishkiCard({
           <div className="postishki-card-meta">
             <span>{formatDate(post.createdAt)}</span>
           </div>
-          <Link className="postishki-card-title" to={`/posts/${post.id}`}>
+          <Link className="postishki-card-title" to={getPostishkaUrl(post)}>
             {getPostTitle(post)}
           </Link>
           <p className="postishki-card-excerpt">{getPostExcerpt(post)}</p>

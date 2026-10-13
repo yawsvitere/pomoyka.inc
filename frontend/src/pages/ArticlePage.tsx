@@ -5,7 +5,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { PhotoProvider, PhotoView } from "react-photo-view";
 import * as postsApi from "../api/posts";
 import type { Post } from "../api/types";
@@ -15,6 +15,7 @@ import shareIcon from "../assets/icons/share.svg";
 import { sanitizeEmbedHtml } from "../utils/safeHtml";
 import { getBrowserFileUrl } from "../utils/fileUrl";
 import { AvatarMedia } from "../components/ui/AvatarMedia";
+import { getPostishkaUrl } from "../utils/postishkaUrl";
 import "../styles/pages/article.css";
 import "react-photo-view/dist/react-photo-view.css";
 
@@ -166,22 +167,86 @@ function getAuthorInitials(displayName: string) {
 }
 
 export function ArticlePage({ publicOnly = false }: { publicOnly?: boolean }) {
-  const { postId } = useParams();
+  const { slug } = useParams();
+  const navigate = useNavigate();
   const [post, setPost] = useState<Post | null>(null);
   const [error, setError] = useState<404 | 500 | null>(null);
   const [isCopied, setIsCopied] = useState(false);
 
   useEffect(() => {
-    if (!postId) return;
+    if (!slug) {
+      setPost(null);
+      setError(404);
+      return;
+    }
     setPost(null);
     setError(null);
-    void postsApi
-      [publicOnly ? "getPublicPost" : "getPost"](postId)
+    const isLegacyId =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        slug,
+      );
+    void (
+      isLegacyId
+        ? postsApi[publicOnly ? "getPublicPost" : "getPost"](slug)
+        : postsApi[publicOnly ? "getPublicPostBySlug" : "getPostBySlug"](slug)
+    )
       .then(setPost)
       .catch((requestError: { response?: { status?: number } }) =>
         setError(requestError.response?.status === 404 ? 404 : 500),
       );
-  }, [postId, publicOnly]);
+  }, [slug, publicOnly]);
+
+  useEffect(() => {
+    if (!post) return;
+    const readableUrl = getPostishkaUrl(post, publicOnly);
+    if (window.location.pathname !== readableUrl)
+      navigate(readableUrl, { replace: true });
+  }, [navigate, post, publicOnly]);
+
+  useEffect(() => {
+    if (!post) return;
+
+    const previousTitle = document.title;
+    const descriptionMeta = document.querySelector<HTMLMetaElement>(
+      'meta[name="description"]',
+    );
+    const previousDescription = descriptionMeta?.content;
+    const title = post.title?.trim() || "Без заголовка";
+    const ogImage = `${window.location.origin}/og/${post.id}.png`;
+
+    document.title = `Помойка.inc | ${title}`;
+    if (descriptionMeta) {
+      descriptionMeta.content =
+        post.description?.trim() ||
+        `Постишка «${title}» от ${post.author.displayName}.`;
+    }
+
+    const setMeta = (selector: string, content: string, attrName: "property" | "name") => {
+      let tag = document.head.querySelector(selector) as HTMLMetaElement | null;
+      if (!tag) {
+        tag = document.createElement("meta");
+        tag.setAttribute(attrName, selector.split('"')[1]);
+        document.head.appendChild(tag);
+      }
+      tag.setAttribute("content", content);
+    };
+
+    setMeta('meta[property="og:title"]', `Помойка.inc | ${title}`, "property");
+    setMeta('meta[property="og:description"]', post.description?.trim() || `Постишка «${title}» от ${post.author.displayName}.`, "property");
+    setMeta('meta[property="og:image"]', ogImage, "property");
+    setMeta('meta[property="og:type"]', "website", "property");
+    setMeta('meta[property="og:url"]', `${window.location.origin}${getPostishkaUrl(post, post.accessLevel === 2)}`, "property");
+    setMeta('meta[name="twitter:card"]', "summary_large_image", "name");
+    setMeta('meta[name="twitter:title"]', `Помойка.inc | ${title}`, "name");
+    setMeta('meta[name="twitter:description"]', post.description?.trim() || `Постишка «${title}» от ${post.author.displayName}.`, "name");
+    setMeta('meta[name="twitter:image"]', ogImage, "name");
+
+    return () => {
+      document.title = previousTitle;
+      if (descriptionMeta && previousDescription !== undefined)
+        descriptionMeta.content = previousDescription;
+    };
+  }, [post]);
 
   if (error === 404)
     return <ErrorPage status={404} title="Постишка не найдена" description="Она была закрыта владельцем или такого адреса не существует." />;
@@ -196,7 +261,7 @@ export function ArticlePage({ publicOnly = false }: { publicOnly?: boolean }) {
       </div>
     );
 
-  const shareUrl = `${window.location.origin}${post.accessLevel === 2 ? `/posts/public/${post.id}` : `/posts/${post.id}`}`;
+  const shareUrl = `${window.location.origin}${getPostishkaUrl(post, post.accessLevel === 2)}`;
 
   return (
     <PhotoProvider>

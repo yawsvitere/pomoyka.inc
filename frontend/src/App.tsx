@@ -239,11 +239,11 @@ function AppRoutes() {
           }
         />
         <Route
-          path="/posts/public/:postId"
+          path="/posts/public/:slug"
           element={<ArticlePage publicOnly />}
         />
         <Route
-          path="/posts/:postId"
+          path="/posts/:slug"
           element={
             <PrivateRoute>
               <PrivateLayout>

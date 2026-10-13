@@ -4,6 +4,7 @@ public class FeedBannerDto
 {
     public Guid Id { get; set; }
     public Guid PostId { get; set; }
+    public string PostSlug { get; set; } = string.Empty;
     public string Title { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; }
     public string? ImageUrl { get; set; }

@@ -14,6 +14,7 @@ public class PostDto
     public string? Text { get; set; }
         public string? Title { get; set; }
         public string? Description { get; set; }
+        public string? Slug { get; set; }
         public bool IsArticle { get; set; }
         public bool IsPostishka { get; set; }
         public PostAccessLevel AccessLevel { get; set; }

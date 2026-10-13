@@ -66,7 +66,7 @@ public class SearchController : ControllerBase
             )
             .OrderByDescending(post => post.CreatedAt)
             .Take(12)
-            .Select(post => new SearchPostDto(post.Id, post.Title, post.Text, post.IsPostishka, post.CreatedAt))
+            .Select(post => new SearchPostDto(post.Id, post.Slug!, post.Title, post.Text, post.IsPostishka, post.CreatedAt))
             .ToListAsync();
 
         var dates = await FindDatesAsync(term);

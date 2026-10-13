@@ -19,6 +19,7 @@ import { getBrowserFileUrl } from "../../utils/fileUrl";
 import sendIcon from "../../assets/icons/send.svg";
 import { ReactionIcon } from "./ContextMenu";
 import { AvatarMedia } from "../ui/AvatarMedia";
+import { getPostishkaUrl } from "../../utils/postishkaUrl";
 export type PostCardData = Omit<Post, "reactionCounts" | "reactions"> &
   Partial<Pick<Post, "reactionCounts" | "reactions">>;
 interface PostCardProps {
@@ -647,7 +648,15 @@ export function PostCard({
                         ?.text ?? ""}
                     </p>
                     {showArticleLink && (
-                      <Link to={`/posts/${post.id}`}>Читать далее →</Link>
+                      <Link
+                        to={
+                          post.isPostishka
+                            ? getPostishkaUrl(post)
+                            : `/posts/${post.id}`
+                        }
+                      >
+                        Читать далее →
+                      </Link>
                     )}
                   </div>
                 ) : (

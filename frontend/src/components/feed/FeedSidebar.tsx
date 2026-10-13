@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import type { FeedBanner, Post, PostFile } from "../../api/types";
 import { getBrowserFileUrl } from "../../utils/fileUrl";
+import { getPostishkaUrl } from "../../utils/postishkaUrl";
 
 interface FeedSidebarProps {
   posts: Post[];
@@ -55,7 +56,9 @@ export function FeedSidebar({ posts, postishki, banners }: FeedSidebarProps) {
             <Link
               className="feed-sidebar-banner"
               key={banner.id}
-              to={`/posts/${banner.postId}`}
+              to={getPostishkaUrl({
+                slug: banner.postSlug,
+              })}
             >
               {banner.imageUrl && (
                 <img src={getBrowserFileUrl(banner.imageUrl)} alt="" />
@@ -79,7 +82,7 @@ export function FeedSidebar({ posts, postishki, banners }: FeedSidebarProps) {
               <Link
                 className="feed-sidebar-post"
                 key={post.id}
-                to={`/posts/${post.id}`}
+                to={getPostishkaUrl(post)}
               >
                 <strong>{getPostLabel(post)}</strong>
                 <span>

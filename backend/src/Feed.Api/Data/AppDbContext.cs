@@ -101,6 +101,7 @@ public class AppDbContext : IdentityDbContext<AppUser, IdentityRole<Guid>, Guid>
             e.Property(p => p.Text).HasColumnType("text");
             e.Property(p => p.Title).HasMaxLength(200);
             e.Property(p => p.Description).HasMaxLength(500);
+            e.Property(p => p.Slug).HasMaxLength(220);
             e.Property(p => p.AccessLevel)
                 .HasDefaultValue(PostAccessLevel.Authenticated)
                 .HasSentinel(PostAccessLevel.Authenticated);
@@ -108,6 +109,7 @@ public class AppDbContext : IdentityDbContext<AppUser, IdentityRole<Guid>, Guid>
             e.HasIndex(x => new { x.PomoykaId, x.IsPostishka, x.CreatedAt });
             e.HasIndex(x => new { x.IsPostishka, x.AccessLevel, x.CreatedAt });
             e.HasIndex(x => new { x.AuthorId, x.IsPostishka, x.CreatedAt });
+            e.HasIndex(x => x.Slug).IsUnique().HasFilter("\"Slug\" IS NOT NULL");
             e.Navigation(p => p.Comments).UsePropertyAccessMode(PropertyAccessMode.Property);
             e.HasIndex(x => new { x.PomoykaId, x.CreatedAt }); // для быстрого поиска постов в Pomoyka
         });

@@ -116,6 +116,20 @@ export async function getPublicPost(id: string) {
   return data;
 }
 
+export async function getPostBySlug(slug: string) {
+  const { data } = await apiClient.get<Post>(
+    `/api/posts/slug/${encodeURIComponent(slug)}`,
+  );
+  return data;
+}
+
+export async function getPublicPostBySlug(slug: string) {
+  const { data } = await apiClient.get<Post>(
+    `/api/posts/public/slug/${encodeURIComponent(slug)}`,
+  );
+  return data;
+}
+
 export async function setPostReaction(postId: string, emoji: string) {
   const { data } = await apiClient.put<{
     reactionCounts: Record<string, number>;

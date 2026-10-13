@@ -33,6 +33,7 @@ export interface Post {
   text: string | null;
   title: string | null;
   description?: string | null;
+  slug?: string | null;
   isArticle: boolean;
   isPostishka?: boolean;
   accessLevel?: 1 | 2;
@@ -73,6 +74,7 @@ export interface PostBlock {
 export interface FeedBanner {
   id: string;
   postId: string;
+  postSlug: string;
   title: string;
   createdAt: string;
   imageUrl: string | null;

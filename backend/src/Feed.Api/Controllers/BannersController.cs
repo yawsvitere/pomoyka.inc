@@ -36,6 +36,7 @@ public class BannersController : ControllerBase
     {
         Id = banner.Id,
         PostId = banner.PostId,
+        PostSlug = banner.Post?.Slug ?? string.Empty,
         Title = banner.Post?.Title?.Trim() ?? "Без названия",
         CreatedAt = banner.Post?.CreatedAt ?? DateTime.UtcNow,
         ImageUrl = banner.Post?.Files

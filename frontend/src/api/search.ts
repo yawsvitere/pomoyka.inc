@@ -19,6 +19,7 @@ export interface SearchDate {
 
 export interface SearchPost {
   id: string;
+  slug: string;
   title: string | null;
   text: string | null;
   isPostishka: boolean;
