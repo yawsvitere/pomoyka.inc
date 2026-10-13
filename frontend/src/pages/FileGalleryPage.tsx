@@ -34,6 +34,59 @@ export function FileGalleryPage() {
       .finally(() => setIsLoading(false));
   }, [folderId]);
 
+  useEffect(() => {
+    if (!gallery || !folderId) return;
+
+    const previousTitle = document.title;
+    const description = `Фото из коллекции «${gallery.name.trim()}» на Помойка.inc.`;
+    const title = `Коллекция «${gallery.name.trim()}» — Помойка.inc`;
+    const galleryUrl = `${window.location.origin}/files/gallery/${folderId}`;
+    const imageUrl = `${window.location.origin}/gallery-og/${folderId}.png`;
+    const metaValues = [
+      ['meta[name="description"]', "name", description],
+      ['meta[property="og:site_name"]', "property", "Помойка.inc"],
+      ['meta[property="og:type"]', "property", "website"],
+      ['meta[property="og:title"]', "property", title],
+      ['meta[property="og:description"]', "property", description],
+      ['meta[property="og:url"]', "property", galleryUrl],
+      ['meta[property="og:image"]', "property", imageUrl],
+      ['meta[property="og:image:width"]', "property", "1200"],
+      ['meta[property="og:image:height"]', "property", "630"],
+      ['meta[name="twitter:card"]', "name", "summary_large_image"],
+      ['meta[name="twitter:title"]', "name", title],
+      ['meta[name="twitter:description"]', "name", description],
+      ['meta[name="twitter:image"]', "name", imageUrl],
+    ] as const;
+
+    document.title = title;
+    const previousMeta = metaValues.map(([selector]) => {
+      const element = document.head.querySelector<HTMLMetaElement>(selector);
+      return { element, content: element?.content };
+    });
+
+    metaValues.forEach(([selector, attribute, content]) => {
+      let element = document.head.querySelector<HTMLMetaElement>(selector);
+      if (!element) {
+        element = document.createElement("meta");
+        element.setAttribute(attribute, selector.split('"')[1]);
+        document.head.appendChild(element);
+      }
+      element.content = content;
+    });
+
+    return () => {
+      document.title = previousTitle;
+      metaValues.forEach(([selector], index) => {
+        const { element, content } = previousMeta[index];
+        if (element && content !== undefined) {
+          element.content = content;
+        } else {
+          document.head.querySelector(selector)?.remove();
+        }
+      });
+    };
+  }, [folderId, gallery]);
+
   if (isLoading)
     return (
       <div className="fm-gallery-empty">

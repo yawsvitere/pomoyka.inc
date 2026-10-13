@@ -15,15 +15,26 @@ function socialPreviewPlugin(): Plugin {
         }
 
         const url = new URL(request.url, "http://localhost");
-        const match = /^\/posts\/public\/([^/]+)\/?$/.exec(url.pathname);
-        if (!match || !socialPreviewAgents.test(request.headers["user-agent"] ?? "")) {
+        const postMatch = /^\/posts\/public\/([^/]+)\/?$/.exec(url.pathname);
+        const galleryMatch = /^\/files\/gallery\/([0-9a-fA-F-]{36})\/?$/.exec(
+          url.pathname,
+        );
+        const metadataPath = postMatch
+          ? `/api/posts/public/metadata/${postMatch[1]}`
+          : galleryMatch
+            ? `/api/files/gallery/metadata/${galleryMatch[1]}`
+            : null;
+        if (
+          !metadataPath ||
+          !socialPreviewAgents.test(request.headers["user-agent"] ?? "")
+        ) {
           next();
           return;
         }
 
         request.headers["x-forwarded-host"] ??= request.headers.host;
         request.headers["x-forwarded-proto"] ??= "http";
-        request.url = `/api/posts/public/metadata/${match[1]}`;
+        request.url = metadataPath;
         next();
       });
     },
@@ -38,7 +49,7 @@ export default defineConfig({
     host: "0.0.0.0",
 
     allowedHosts: [
-      "33eb-2a01-ecc0-40-6c0-00-2.ngrok-free.app",
+      "d7b2-2-27-11-87.ngrok-free.app",
       "cba9-2-27-11-87.ngrok-free.app",
     ],
 
@@ -52,6 +63,13 @@ export default defineConfig({
         target: "http://127.0.0.1:5000",
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/og/, "/api/posts/og"),
+      },
+
+      "/gallery-og": {
+        target: "http://127.0.0.1:5000",
+        changeOrigin: true,
+        rewrite: (path) =>
+          path.replace(/^\/gallery-og/, "/api/files/gallery/og"),
       },
 
       "/hubs": {
