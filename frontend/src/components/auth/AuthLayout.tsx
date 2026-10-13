@@ -4,10 +4,9 @@ import "../../styles/pages/auth.css";
 interface AuthLayoutProps {
   title: string;
   children: ReactNode;
-  bottom?: ReactNode;
 }
 
-export function AuthLayout({ title, children, bottom }: AuthLayoutProps) {
+export function AuthLayout({ title, children }: AuthLayoutProps) {
   return (
     <main className="auth-page">
       <div className="auth-card">
@@ -43,8 +42,6 @@ export function AuthLayout({ title, children, bottom }: AuthLayoutProps) {
             <h1>{title}</h1>
 
             {children}
-
-            {bottom && <div className="auth-bottom">{bottom}</div>}
           </div>
 
           <footer className="auth-footer">

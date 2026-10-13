@@ -5,16 +5,8 @@ import { AuthProvider, useAuth } from "./context/AuthContext";
 import { ErrorPage } from "./components/ui/ErrorPage";
 import { ToastProvider } from "./components/ui/Toast";
 
-const LoginPage = lazy(() =>
-  import("./pages/LoginPage").then(({ LoginPage }) => ({ default: LoginPage })),
-);
-const CodePage = lazy(() =>
-  import("./pages/CodePage").then(({ CodePage }) => ({ default: CodePage })),
-);
-const RegisterPage = lazy(() =>
-  import("./pages/RegisterPage").then(({ RegisterPage }) => ({
-    default: RegisterPage,
-  })),
+const AuthPage = lazy(() =>
+  import("./pages/AuthPage").then(({ AuthPage }) => ({ default: AuthPage })),
 );
 const FeedPage = lazy(() =>
   import("./pages/FeedPage").then(({ FeedPage }) => ({ default: FeedPage })),
@@ -101,7 +93,7 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
   }
 
   if (!user) {
-    return <Navigate to="/login" replace />;
+    return <Navigate to="/auth" replace />;
   }
 
   return <>{children}</>;
@@ -149,30 +141,21 @@ function AppRoutes() {
     <Suspense fallback={null}>
       <Routes>
         <Route
-          path="/login"
+          path="/auth"
           element={
             <GuestRoute>
-              <LoginPage />
+              <AuthPage />
             </GuestRoute>
           }
         />
-
+        <Route path="/login" element={<Navigate to="/auth" replace />} />
         <Route
           path="/register/code"
-          element={
-            <GuestRoute>
-              <CodePage />
-            </GuestRoute>
-          }
+          element={<Navigate to="/auth?mode=register" replace />}
         />
-
         <Route
           path="/register"
-          element={
-            <GuestRoute>
-              <RegisterPage />
-            </GuestRoute>
-          }
+          element={<Navigate to="/auth?mode=register" replace />}
         />
 
         <Route
