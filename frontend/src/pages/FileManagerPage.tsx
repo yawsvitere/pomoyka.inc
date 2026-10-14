@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { createPortal } from "react-dom";
 import { PhotoSlider } from "react-photo-view";
 import * as filesApi from "../api/files";
@@ -169,12 +169,26 @@ function ImageFilePreview({
   const [url, setUrl] = useState<string | null>(null);
   const [isViewerOpen, setIsViewerOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isHoverPreviewVisible, setIsHoverPreviewVisible] = useState(false);
+  const [hoverPreviewPosition, setHoverPreviewPosition] = useState({
+    left: 0,
+    top: 0,
+  });
+  const hoverPreviewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     return () => {
       if (url) URL.revokeObjectURL(url);
     };
   }, [url]);
+
+  useEffect(() => {
+    return () => {
+      if (hoverPreviewTimer.current) {
+        clearTimeout(hoverPreviewTimer.current);
+      }
+    };
+  }, []);
 
   async function openImage() {
     if (isLoading) return;
@@ -190,6 +204,37 @@ function ImageFilePreview({
     } finally {
       setIsLoading(false);
     }
+  }
+
+  function showHoverPreview(event: MouseEvent<HTMLButtonElement>) {
+    if (!file.previewUrl || isRenaming) return;
+
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const previewWidth = 288;
+    const previewHeight = 260;
+
+    setHoverPreviewPosition({
+      left: Math.max(
+        12,
+        Math.min(
+          bounds.left,
+          window.innerWidth - previewWidth - 12,
+        ),
+      ),
+      top: Math.max(12, bounds.top - previewHeight - 12),
+    });
+    hoverPreviewTimer.current = setTimeout(
+      () => setIsHoverPreviewVisible(true),
+      500,
+    );
+  }
+
+  function hideHoverPreview() {
+    if (hoverPreviewTimer.current) {
+      clearTimeout(hoverPreviewTimer.current);
+      hoverPreviewTimer.current = null;
+    }
+    setIsHoverPreviewVisible(false);
   }
 
   const content = (
@@ -227,6 +272,8 @@ function ImageFilePreview({
       type="button"
       className="fm-file-name fm-image-file-name"
       onClick={() => void openImage()}
+      onMouseEnter={showHoverPreview}
+      onMouseLeave={hideHoverPreview}
       disabled={isLoading}
     >
       {content}
@@ -236,6 +283,19 @@ function ImageFilePreview({
   return (
     <>
       {fileNameControl}
+      {isHoverPreviewVisible &&
+        file.previewUrl &&
+        createPortal(
+          <div
+            className="fm-hover-image-preview"
+            style={hoverPreviewPosition}
+            aria-hidden="true"
+          >
+            <img src={file.previewUrl} alt="" />
+            <span>{file.fileName}</span>
+          </div>,
+          document.body,
+        )}
       {url && (
         <PhotoSlider
           images={[{ key: file.id, src: url }]}
