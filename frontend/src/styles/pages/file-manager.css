@@ -95,7 +95,7 @@
   padding: 16px 18px;
   border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-md, 10px);
-  background: var(--color-surface-raised);
+  background: var(--color-surface-dark);
   animation: files-fade-in 180ms ease-out 70ms both;
 }
 .fm-storage-head {

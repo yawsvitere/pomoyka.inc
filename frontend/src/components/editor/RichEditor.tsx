@@ -32,6 +32,21 @@ function registerFile(file: File): string {
   return localId;
 }
 
+function BlockGrip() {
+  return (
+    <span className="rte-block-grip" aria-hidden="true" title="Перетащить блок">
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+        <circle cx="9" cy="6" r="1.7" />
+        <circle cx="15" cy="6" r="1.7" />
+        <circle cx="9" cy="12" r="1.7" />
+        <circle cx="15" cy="12" r="1.7" />
+        <circle cx="9" cy="18" r="1.7" />
+        <circle cx="15" cy="18" r="1.7" />
+      </svg>
+    </span>
+  );
+}
+
 function AttachmentView({ node, deleteNode }: any) {
   const localId = node.attrs.localId as string;
   const entry = fileRegistry.get(localId);
@@ -41,10 +56,15 @@ function AttachmentView({ node, deleteNode }: any) {
   const isImage = contentType.startsWith("image/");
 
   return (
-    <NodeViewWrapper className="rte-attachment-wrapper" data-drag-handle>
+    <NodeViewWrapper
+      className="rte-block rte-attachment-wrapper"
+      data-drag-handle
+      contentEditable={false}
+    >
+      <BlockGrip />
       {isImage ? (
         <div className="rte-image-block">
-          {fileUrl && <img src={fileUrl} alt={fileName} />}
+          {fileUrl && <img src={fileUrl} alt={fileName} draggable={false} />}
           <button
             type="button"
             className="rte-attachment-remove"
@@ -158,9 +178,15 @@ const AttachmentNode = Node.create({
 
 function HtmlEmbedView({ node, deleteNode }: any) {
   return (
-    <NodeViewWrapper className="rte-html-embed">
+    <NodeViewWrapper
+      className="rte-block rte-html-embed"
+      data-drag-handle
+      contentEditable={false}
+    >
+      <BlockGrip />
       <div className="rte-html-embed-label">HTML-виджет</div>
       <div
+        className="rte-html-embed-body"
         dangerouslySetInnerHTML={{ __html: sanitizeEmbedHtml(node.attrs.html) }}
       />
       <button
@@ -193,10 +219,21 @@ function GalleryWidgetView({ node, deleteNode }: any) {
   const safeUrl = getSafeWidgetUrl(url);
   const safeImageUrl = getSafeWidgetUrl(imageUrl);
   return (
-    <NodeViewWrapper className="rte-gallery-widget">
+    <NodeViewWrapper
+      className="rte-block rte-gallery-widget"
+      data-drag-handle
+      contentEditable={false}
+    >
+      <BlockGrip />
       {safeUrl && (
-        <a href={safeUrl} target="_blank" rel="noopener noreferrer">
-          {safeImageUrl && <img src={safeImageUrl} alt="" />}
+        <a
+          href={safeUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          draggable={false}
+          onClick={(event) => event.preventDefault()}
+        >
+          {safeImageUrl && <img src={safeImageUrl} alt="" draggable={false} />}
           <span className="rte-gallery-widget-copy">
             <strong>{title || siteName || safeUrl}</strong>
             {description && <small>{description}</small>}
