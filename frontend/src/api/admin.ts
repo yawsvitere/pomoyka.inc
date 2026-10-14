@@ -63,6 +63,25 @@ export async function updateUserStorageQuota(
   return data;
 }
 
+export async function updateUserProfile(
+  id: string,
+  email: string,
+  displayName: string,
+) {
+  const { data } = await apiClient.put<{
+    email: string;
+    displayName: string;
+  }>(`/api/admin/users/${id}/profile`, { email, displayName });
+  return data;
+}
+
+export async function generateUserPassword(id: string) {
+  const { data } = await apiClient.post<{ password: string }>(
+    `/api/admin/users/${id}/generate-password`,
+  );
+  return data.password;
+}
+
 export async function createInviteCode(
   name: string,
   expiresInHours: number | null,

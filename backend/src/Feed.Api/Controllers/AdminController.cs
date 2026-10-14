@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Security.Cryptography;
 using Feed.Api.Data;
 using Feed.Api.Hubs;
 using Feed.Api.Models;
@@ -77,7 +78,9 @@ public class AdminController : ControllerBase
                 Email = user.Email ?? "",
                 DisplayName = user.DisplayName,
                 NicknameColor = string.IsNullOrWhiteSpace(user.NicknameColor) ? "#4f46e5" : user.NicknameColor,
-                AvatarUrl = user.AvatarUrl,
+                AvatarUrl = user.AvatarUrl == null
+                    ? null
+                    : $"/api/files/avatar/{user.Id}?v={Uri.EscapeDataString(user.AvatarUrl)}",
                 CreatedAt = user.CreatedAt,
                 Roles = roles.ToList(),
                 StorageUsedBytes = storageUsedBytes,
@@ -128,6 +131,57 @@ public class AdminController : ControllerBase
             return BadRequest(result.Errors);
 
         return Ok(new { quotaBytes = user.StorageQuotaBytes });
+    }
+
+    [HttpPut("users/{id:guid}/profile")]
+    public async Task<ActionResult> UpdateUserProfile(
+        Guid id,
+        [FromBody] UpdateAdminUserProfileRequest request)
+    {
+        var user = await _userManager.FindByIdAsync(id.ToString());
+        if (user == null)
+            return NotFound(new { message = "Пользователь не найден" });
+
+        var displayName = request.DisplayName.Trim();
+        if (displayName.Length is < 2 or > 50)
+            return BadRequest(new { message = "Ник должен содержать от 2 до 50 символов" });
+
+        var email = request.Email.Trim();
+        user.Email = email;
+        user.UserName = email;
+        user.DisplayName = displayName;
+
+        var result = await _userManager.UpdateAsync(user);
+        if (!result.Succeeded)
+            return BadRequest(result.Errors);
+
+        await _feedHub.Clients
+            .Group("feed-global")
+            .SendAsync("UserProfileChanged", user.Id, user.NicknameColor);
+
+        return Ok(new { email = user.Email, displayName = user.DisplayName });
+    }
+
+    [HttpPost("users/{id:guid}/generate-password")]
+    public async Task<ActionResult> GenerateUserPassword(Guid id)
+    {
+        var user = await _userManager.FindByIdAsync(id.ToString());
+        if (user == null)
+            return NotFound(new { message = "Пользователь не найден" });
+
+        var password = GeneratePassword();
+        var resetToken = await _userManager.GeneratePasswordResetTokenAsync(user);
+        var result = await _userManager.ResetPasswordAsync(user, resetToken, password);
+        if (!result.Succeeded)
+        {
+            return BadRequest(new
+            {
+                message = "Не удалось установить новый пароль",
+                errors = result.Errors
+            });
+        }
+
+        return Ok(new { password });
     }
 
     [HttpPost("invite-codes")]
@@ -374,5 +428,28 @@ public class AdminController : ControllerBase
     {
         var adminUsers = await _userManager.GetUsersInRoleAsync("Admin");
         return adminUsers.Any(user => user.Id != userId);
+    }
+
+    private static string GeneratePassword()
+    {
+        const string uppercase = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+        const string lowercase = "abcdefghijkmnopqrstuvwxyz";
+        const string digits = "23456789";
+        const string allCharacters = uppercase + lowercase + digits;
+        var characters = new char[16];
+
+        characters[0] = uppercase[RandomNumberGenerator.GetInt32(uppercase.Length)];
+        characters[1] = lowercase[RandomNumberGenerator.GetInt32(lowercase.Length)];
+        characters[2] = digits[RandomNumberGenerator.GetInt32(digits.Length)];
+        for (var i = 3; i < characters.Length; i++)
+            characters[i] = allCharacters[RandomNumberGenerator.GetInt32(allCharacters.Length)];
+
+        for (var i = characters.Length - 1; i > 0; i--)
+        {
+            var swapIndex = RandomNumberGenerator.GetInt32(i + 1);
+            (characters[i], characters[swapIndex]) = (characters[swapIndex], characters[i]);
+        }
+
+        return new string(characters);
     }
 }

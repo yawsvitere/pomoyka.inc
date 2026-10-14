@@ -1,13 +1,19 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
+import { Link } from "react-router-dom";
+import { AvatarMedia } from "../components/ui/AvatarMedia";
+import "../styles/pages/admin.css";
 import * as adminApi from "../api/admin";
 import type { AdminUser } from "../api/admin";
 import type { FeedBanner, Post } from "../api/types";
+import { getBrowserFileUrl } from "../utils/fileUrl";
 
 const GB = 1024 * 1024 * 1024;
+const QUOTA_PRESETS = [1, 2, 5, 10];
 
 function formatBytes(bytes: number) {
   if (!bytes) return "0 Б";
-  const units = ["Б", "КБ", "МБ", "ГБ"];
+  const units = ["Б", "КБ", "МБ", "ГБ", "ТБ"];
   const unitIndex = Math.min(
     Math.floor(Math.log(bytes) / Math.log(1024)),
     units.length - 1,
@@ -18,130 +24,387 @@ function formatBytes(bytes: number) {
 
 function formatGb(bytes: number | null | undefined) {
   if (!bytes) return "0";
-  return (bytes / GB).toFixed(2).replace(/\.00$/, "");
+  return (bytes / GB).toFixed(2).replace(/\.?0+$/, "");
 }
 
+function userQuota(user: AdminUser) {
+  return user.storageQuotaBytes ?? user.effectiveStorageQuotaBytes ?? 0;
+}
+
+function usageTone(used: number, quota: number) {
+  if (!quota) return "";
+  const ratio = used / quota;
+  if (ratio >= 0.95) return "is-danger";
+  if (ratio >= 0.8) return "is-warn";
+  return "";
+}
+
+function formatLastSeen(user: AdminUser) {
+  if (user.isOnline) return "Онлайн";
+  if (!user.lastSeenAt) return "Не в сети";
+  return `Был ${new Date(user.lastSeenAt).toLocaleString("ru-RU", {
+    dateStyle: "short",
+    timeStyle: "short",
+  })}`;
+}
+
+const iconProps = {
+  viewBox: "0 0 16 16",
+  fill: "none",
+  stroke: "currentColor",
+  strokeWidth: 1.5,
+  strokeLinecap: "round" as const,
+  strokeLinejoin: "round" as const,
+};
+
+const CopyIcon = () => (
+  <svg {...iconProps}>
+    <rect x="5.5" y="5.5" width="8" height="8" rx="1.8" />
+    <path d="M10.5 5.5V4a1.5 1.5 0 0 0-1.5-1.5H4A1.5 1.5 0 0 0 2.5 4v5A1.5 1.5 0 0 0 4 10.5h1.5" />
+  </svg>
+);
+const TrashIcon = () => (
+  <svg {...iconProps}>
+    <path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8h5.8l.6-8" />
+  </svg>
+);
+const EditIcon = () => (
+  <svg {...iconProps}>
+    <path d="M10.5 3 13 5.5 5.5 13H3v-2.5L10.5 3Z" />
+  </svg>
+);
+const KeyIcon = () => (
+  <svg {...iconProps}>
+    <circle cx="5.5" cy="10.5" r="2.5" />
+    <path d="M7.3 8.7 13 3m-2 2 1.5 1.5" />
+  </svg>
+);
+const PlusIcon = () => (
+  <svg {...iconProps}>
+    <path d="M8 3v10M3 8h10" />
+  </svg>
+);
+
+type ToastItem = { id: number; kind: "success" | "error"; message: string };
+
+function Toasts({
+  items,
+  onDismiss,
+}: {
+  items: ToastItem[];
+  onDismiss: (id: number) => void;
+}) {
+  return (
+    <div className="toast-region" aria-live="polite">
+      {items.map((item) => (
+        <div className={`toast toast--${item.kind}`} key={item.id}>
+          <span className="toast__icon" />
+          <span className="toast__message">{item.message}</span>
+          <button
+            className="toast__dismiss"
+            onClick={() => onDismiss(item.id)}
+            aria-label="Закрыть"
+          >
+            ×
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+type ConfirmState = {
+  title: string;
+  text: string;
+  confirmLabel: string;
+  onConfirm: () => void;
+} | null;
+
+function ConfirmDialog({
+  state,
+  onClose,
+}: {
+  state: ConfirmState;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    if (!state) return;
+    document.documentElement.classList.add("alert-dialog-open");
+    document.body.classList.add("alert-dialog-open");
+    return () => {
+      document.documentElement.classList.remove("alert-dialog-open");
+      document.body.classList.remove("alert-dialog-open");
+    };
+  }, [state]);
+
+  if (!state) return null;
+  return (
+    <div className="alert-dialog-backdrop" onClick={onClose}>
+      <div
+        className="alert-dialog"
+        role="alertdialog"
+        aria-modal="true"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2>{state.title}</h2>
+        <p>{state.text}</p>
+        <div className="alert-dialog__actions">
+          <button className="btn btn-secondary" onClick={onClose}>
+            Отмена
+          </button>
+          <button
+            className="btn alert-dialog__confirm"
+            onClick={() => {
+              state.onConfirm();
+              onClose();
+            }}
+          >
+            {state.confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Card({
+  title,
+  description,
+  actions,
+  children,
+}: {
+  title?: string;
+  description?: ReactNode;
+  actions?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <section className="admin-card">
+      {(title || actions) && (
+        <div className="admin-card__head">
+          <div>
+            {title && <h2>{title}</h2>}
+            {description && <p>{description}</p>}
+          </div>
+          {actions}
+        </div>
+      )}
+      {children}
+    </section>
+  );
+}
+
+function UsageBar({ used, quota }: { used: number; quota: number }) {
+  const pct = quota ? Math.min(100, (used / quota) * 100) : 0;
+  return (
+    <div className="usage">
+      <div className="usage-bar">
+        <div
+          className={`usage-bar__fill ${usageTone(used, quota)}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <span className="label">
+        {formatBytes(used)} из {formatBytes(quota)}
+      </span>
+    </div>
+  );
+}
+
+function QuotaEditor({
+  currentGb,
+  onSave,
+}: {
+  currentGb: string;
+  onSave: (gb: string) => Promise<boolean> | void;
+}) {
+  const [draft, setDraft] = useState(currentGb);
+  const dirty = draft !== currentGb;
+  const valid = Number(draft) > 0;
+
+  return (
+    <div className="admin-quota">
+      <div className="admin-quota__input">
+        <input
+          className="input admin-input--sm"
+          type="number"
+          min="0.1"
+          step="0.5"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && dirty && valid) void onSave(draft);
+            if (e.key === "Escape") setDraft(currentGb);
+          }}
+        />
+        <span className="label">ГБ</span>
+        {dirty && (
+          <>
+            <button
+              className="btn btn-primary btn-sm"
+              disabled={!valid}
+              onClick={() => void onSave(draft)}
+            >
+              Сохранить
+            </button>
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => setDraft(currentGb)}
+            >
+              Отмена
+            </button>
+          </>
+        )}
+      </div>
+      <div className="admin-presets">
+        {QUOTA_PRESETS.map((preset) => (
+          <button
+            key={preset}
+            className={`btn btn-segment ${Number(currentGb) === preset ? "is-active" : ""}`}
+            onClick={() => void onSave(String(preset))}
+          >
+            {preset}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+type Tab = "storage" | "banners" | "users" | "invites";
+
+const TABS: { id: Tab; label: string }[] = [
+  { id: "storage", label: "Хранилище" },
+  { id: "banners", label: "Главная" },
+  { id: "users", label: "Пользователи" },
+  { id: "invites", label: "Инвайты" },
+];
+
 export function AdminPage() {
+  const [tab, setTab] = useState<Tab>("storage");
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [codes, setCodes] = useState<adminApi.AdminInviteCode[]>([]);
   const [banners, setBanners] = useState<FeedBanner[]>([]);
   const [postishki, setPostishki] = useState<Post[]>([]);
   const [storageSummary, setStorageSummary] =
     useState<adminApi.AdminStorageSummary | null>(null);
+
   const [totalQuotaGb, setTotalQuotaGb] = useState("25");
   const [defaultUserQuotaGb, setDefaultUserQuotaGb] = useState("1");
-  const [selectedPostId, setSelectedPostId] = useState("");
+  const [savingStorage, setSavingStorage] = useState(false);
+
+  const [storageQuery, setStorageQuery] = useState("");
+  const [userQuery, setUserQuery] = useState("");
+  const [postQuery, setPostQuery] = useState("");
+
   const [hours, setHours] = useState("24");
   const [inviteName, setInviteName] = useState("");
   const [invite, setInvite] = useState<adminApi.AdminInviteCode | null>(null);
   const [inviteImageFile, setInviteImageFile] = useState<File | null>(null);
   const [inviteImageUploading, setInviteImageUploading] = useState(false);
-  const [error, setError] = useState("");
 
-  async function loadUsers() {
+  const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
+  const [editEmail, setEditEmail] = useState("");
+  const [editDisplayName, setEditDisplayName] = useState("");
+  const [savingUserId, setSavingUserId] = useState<string | null>(null);
+  const [resettingPasswordUserId, setResettingPasswordUserId] = useState<
+    string | null
+  >(null);
+  const [generatedPasswords, setGeneratedPasswords] = useState<
+    Record<string, string>
+  >({});
+
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const [confirm, setConfirm] = useState<ConfirmState>(null);
+
+  const notify = useCallback((kind: ToastItem["kind"], message: string) => {
+    const id = Date.now() + Math.random();
+    setToasts((current) => [...current, { id, kind, message }]);
+    window.setTimeout(
+      () => setToasts((current) => current.filter((t) => t.id !== id)),
+      3500,
+    );
+  }, []);
+
+  async function load() {
     try {
-      const [
-        loadedUsers,
-        loadedCodes,
-        loadedBanners,
-        loadedPostishki,
-        loadedSummary,
-      ] = await Promise.all([
+      setLoadError(false);
+      const [u, c, b, p, s] = await Promise.all([
         adminApi.getUsers(),
         adminApi.getInviteCodes(),
         adminApi.getBanners(),
         adminApi.getPostishki(),
         adminApi.getStorageSummary(),
       ]);
-      setUsers(loadedUsers);
-      setCodes(loadedCodes);
-      setBanners(loadedBanners);
-      setPostishki(loadedPostishki);
-      setStorageSummary(loadedSummary);
-      setTotalQuotaGb(formatGb(loadedSummary.totalQuotaBytes));
-      setDefaultUserQuotaGb(formatGb(loadedSummary.defaultUserQuotaBytes));
+      setUsers(u);
+      setCodes(c);
+      setBanners(b);
+      setPostishki(p);
+      setStorageSummary(s);
+      setTotalQuotaGb(formatGb(s.totalQuotaBytes));
+      setDefaultUserQuotaGb(formatGb(s.defaultUserQuotaBytes));
     } catch {
-      setError("Не удалось загрузить админские данные");
+      setLoadError(true);
+    } finally {
+      setLoading(false);
     }
   }
 
   useEffect(() => {
-    void loadUsers();
+    void load();
   }, []);
 
-  async function generateCode() {
+  async function copyText(text: string, okMessage = "Скопировано") {
     try {
-      setError("");
-      if (!inviteName.trim()) {
-        setError("Укажи имя для инвайта");
-        return;
-      }
-      const created = await adminApi.createInviteCode(
-        inviteName,
-        hours ? Number(hours) : null,
-      );
-      setInvite(created);
-      setInviteImageFile(null);
-      setCodes((current) => [created, ...current]);
+      await navigator.clipboard.writeText(text);
+      notify("success", okMessage);
     } catch {
-      setError("Не удалось создать инвайт-код");
+      notify("error", "Не удалось скопировать");
     }
   }
 
-  async function uploadInvitePhoto() {
-    if (!invite || !inviteImageFile) return;
-    try {
-      setError("");
-      setInviteImageUploading(true);
-      const imageUrl = await adminApi.uploadInviteImage(
-        invite.id,
-        inviteImageFile,
-      );
-      const patchedInvite = { ...invite, imageUrl };
-      setInvite(patchedInvite);
-      setCodes((current) =>
-        current.map((code) => (code.id === invite.id ? patchedInvite : code)),
-      );
-      setInviteImageFile(null);
-    } catch {
-      setError("Не удалось загрузить фото для инвайт-кода");
-    } finally {
-      setInviteImageUploading(false);
-    }
-  }
+  const allocatedBytes = useMemo(
+    () => users.reduce((sum, user) => sum + userQuota(user), 0),
+    [users],
+  );
+  const totalBytes = storageSummary?.totalQuotaBytes ?? 0;
+  const usedBytes = storageSummary?.usedBytes ?? 0;
+  const freeToAllocate = totalBytes - allocatedBytes;
+  const overcommitted = freeToAllocate < 0;
 
-  async function updateRole(id: string, role: string) {
-    try {
-      await adminApi.changeRole(id, role);
-      setUsers((current) =>
-        current.map((user) =>
-          user.id === id
-            ? { ...user, roles: role === "User" ? [] : [role] }
-            : user,
-        ),
-      );
-    } catch {
-      setError("Не удалось изменить роль");
-    }
-  }
+  const storageDirty =
+    !!storageSummary &&
+    (totalQuotaGb !== formatGb(storageSummary.totalQuotaBytes) ||
+      defaultUserQuotaGb !== formatGb(storageSummary.defaultUserQuotaBytes));
 
   async function saveStorageSettings() {
+    const total = Number(totalQuotaGb);
+    const def = Number(defaultUserQuotaGb);
+    if (!(total > 0) || !(def > 0)) {
+      notify("error", "Лимиты должны быть больше нуля");
+      return;
+    }
     try {
-      setError("");
+      setSavingStorage(true);
       const summary = await adminApi.updateStorageSettings(
-        Math.round(Number(totalQuotaGb || 0) * GB),
-        Math.round(Number(defaultUserQuotaGb || 0) * GB),
+        Math.round(total * GB),
+        Math.round(def * GB),
       );
       setStorageSummary(summary);
+      notify("success", "Лимиты сохранены");
     } catch {
-      setError("Не удалось сохранить лимиты хранилища");
+      notify("error", "Не удалось сохранить лимиты хранилища");
+    } finally {
+      setSavingStorage(false);
     }
   }
 
   async function updateUserQuota(id: string, quotaGb: string) {
     const nextValue = Number(quotaGb);
-    if (!Number.isFinite(nextValue) || nextValue <= 0) return;
-
+    if (!Number.isFinite(nextValue) || nextValue <= 0) return false;
     try {
       const updated = await adminApi.updateUserStorageQuota(
         id,
@@ -159,20 +422,108 @@ export function AdminPage() {
             : user,
         ),
       );
+      notify("success", "Квота обновлена");
+      return true;
     } catch {
-      setError("Не удалось обновить квоту пользователя");
+      notify("error", "Не удалось обновить квоту пользователя");
+      return false;
     }
   }
 
-  async function addBanner() {
-    if (!selectedPostId) return;
+  async function updateRole(id: string, role: string) {
     try {
-      setError("");
-      const banner = await adminApi.addBanner(selectedPostId);
-      setBanners((current) => [...current, banner]);
-      setSelectedPostId("");
+      await adminApi.changeRole(id, role);
+      setUsers((current) =>
+        current.map((user) =>
+          user.id === id
+            ? { ...user, roles: role === "User" ? [] : [role] }
+            : user,
+        ),
+      );
+      notify("success", "Роль изменена");
     } catch {
-      setError("Не удалось добавить баннер");
+      notify("error", "Не удалось изменить роль");
+    }
+  }
+
+  function toggleUserPanel(user: AdminUser) {
+    if (expandedUserId === user.id) {
+      setExpandedUserId(null);
+      return;
+    }
+    setExpandedUserId(user.id);
+    setEditEmail(user.email);
+    setEditDisplayName(user.displayName);
+  }
+
+  async function saveUserProfile(id: string) {
+    try {
+      setSavingUserId(id);
+      const updated = await adminApi.updateUserProfile(
+        id,
+        editEmail.trim(),
+        editDisplayName.trim(),
+      );
+      setUsers((current) =>
+        current.map((user) =>
+          user.id === id
+            ? {
+                ...user,
+                email: updated.email,
+                displayName: updated.displayName,
+              }
+            : user,
+        ),
+      );
+      setExpandedUserId(null);
+      notify("success", "Профиль обновлён");
+    } catch {
+      notify("error", "Не удалось изменить email или ник");
+    } finally {
+      setSavingUserId(null);
+    }
+  }
+
+  async function generateUserPassword(id: string) {
+    try {
+      setGeneratedPasswords((current) => {
+        const next = { ...current };
+        delete next[id];
+        return next;
+      });
+      setResettingPasswordUserId(id);
+      const password = await adminApi.generateUserPassword(id);
+      setGeneratedPasswords((current) => ({ ...current, [id]: password }));
+    } catch {
+      notify("error", "Не удалось сгенерировать пароль");
+    } finally {
+      setResettingPasswordUserId(null);
+    }
+  }
+
+  function askGeneratePassword(user: AdminUser) {
+    setConfirm({
+      title: "Сгенерировать новый пароль?",
+      text: `Текущий пароль ${user.displayName} перестанет работать. Новый пароль будет показан один раз.`,
+      confirmLabel: "Сгенерировать",
+      onConfirm: () => void generateUserPassword(user.id),
+    });
+  }
+
+  const availablePosts = useMemo(() => {
+    const q = postQuery.trim().toLowerCase();
+    return postishki
+      .filter((post) => !banners.some((banner) => banner.postId === post.id))
+      .filter((post) => !q || (post.title || "").toLowerCase().includes(q));
+  }, [postishki, banners, postQuery]);
+
+  async function addBanner(postId: string) {
+    try {
+      const banner = await adminApi.addBanner(postId);
+      setBanners((current) => [...current, banner]);
+      notify("success", "Постишка добавлена на главную");
+    } catch {
+      notify("error", "Не удалось добавить баннер");
     }
   }
 
@@ -180,270 +531,660 @@ export function AdminPage() {
     try {
       await adminApi.deleteBanner(id);
       setBanners((current) => current.filter((banner) => banner.id !== id));
+      notify("success", "Баннер убран");
     } catch {
-      setError("Не удалось удалить баннер");
+      notify("error", "Не удалось удалить баннер");
     }
   }
+
+  async function generateCode() {
+    if (!inviteName.trim()) {
+      notify("error", "Укажи имя для инвайта");
+      return;
+    }
+    try {
+      const created = await adminApi.createInviteCode(
+        inviteName.trim(),
+        hours ? Number(hours) : null,
+      );
+      setInvite(created);
+      setInviteName("");
+      setInviteImageFile(null);
+      setCodes((current) => [created, ...current]);
+      notify("success", "Инвайт создан");
+    } catch {
+      notify("error", "Не удалось создать инвайт-код");
+    }
+  }
+
+  async function uploadInvitePhoto() {
+    if (!invite || !inviteImageFile) return;
+    try {
+      setInviteImageUploading(true);
+      const imageUrl = await adminApi.uploadInviteImage(
+        invite.id,
+        inviteImageFile,
+      );
+      const patched = { ...invite, imageUrl };
+      setInvite(patched);
+      setCodes((current) =>
+        current.map((code) => (code.id === invite.id ? patched : code)),
+      );
+      setInviteImageFile(null);
+      notify("success", "Фото загружено");
+    } catch {
+      notify("error", "Не удалось загрузить фото");
+    } finally {
+      setInviteImageUploading(false);
+    }
+  }
+
+  async function deleteCode(id: string) {
+    try {
+      await adminApi.deleteInviteCode(id);
+      setCodes((current) => current.filter((item) => item.id !== id));
+      if (invite?.id === id) setInvite(null);
+    } catch {
+      notify("error", "Не удалось удалить инвайт");
+    }
+  }
+
+  function codeStatus(code: adminApi.AdminInviteCode) {
+    if (code.usedAt) return { label: "Использован", active: false };
+    if (code.expiresAt && new Date(code.expiresAt) < new Date())
+      return { label: "Истёк", active: false };
+    return { label: "Активен", active: true };
+  }
+
+  const storageUsers = useMemo(() => {
+    const q = storageQuery.trim().toLowerCase();
+    return users
+      .filter(
+        (u) =>
+          !q ||
+          u.displayName.toLowerCase().includes(q) ||
+          u.email.toLowerCase().includes(q),
+      )
+      .sort((a, b) => b.storageUsedBytes - a.storageUsedBytes);
+  }, [users, storageQuery]);
+
+  const filteredUsers = useMemo(() => {
+    const q = userQuery.trim().toLowerCase();
+    return users.filter(
+      (u) =>
+        !q ||
+        u.displayName.toLowerCase().includes(q) ||
+        u.email.toLowerCase().includes(q),
+    );
+  }, [users, userQuery]);
+
+  const capacityUsedPct = totalBytes
+    ? Math.min(100, (usedBytes / totalBytes) * 100)
+    : 0;
+  const capacityAllocPct = totalBytes
+    ? Math.min(100, (allocatedBytes / totalBytes) * 100)
+    : 0;
 
   return (
     <div className="admin-page">
       <header className="admin-header">
-        <div>
-          <span className="admin-kicker">Управление</span>
-          <h1>Админка</h1>
-        </div>
+        <nav className="admin-tabs" role="tablist">
+          {TABS.map((item) => (
+            <button
+              key={item.id}
+              role="tab"
+              aria-selected={tab === item.id}
+              className={`btn btn-segment ${tab === item.id ? "is-active" : ""}`}
+              onClick={() => setTab(item.id)}
+            >
+              {item.label}
+            </button>
+          ))}
+        </nav>
       </header>
-      {error && <p className="admin-error">{error}</p>}
 
-      <section className="admin-section">
-        <div className="admin-section-heading">
-          <div>
-            <h2>Хранилище</h2>
-            <p>
-              {storageSummary
+      {loading && (
+        <div className="admin-center">
+          <span className="spinner" />
+        </div>
+      )}
+
+      {!loading && loadError && (
+        <Card>
+          <div className="admin-empty">
+            <p>Не удалось загрузить админские данные</p>
+            <button className="btn btn-secondary" onClick={() => void load()}>
+              Повторить
+            </button>
+          </div>
+        </Card>
+      )}
+
+      {!loading && !loadError && tab === "storage" && (
+        <>
+          <Card
+            title="Хранилище"
+            description={
+              storageSummary
                 ? `Последний замер: ${new Date(storageSummary.measuredAt).toLocaleString("ru-RU")}`
-                : "Загрузка..."}
-            </p>
-          </div>
-        </div>
-        <div className="admin-storage-summary">
-          <div>
-            <strong>{formatBytes(storageSummary?.usedBytes ?? 0)}</strong>
-            <span>использовано</span>
-          </div>
-          <div>
-            <strong>{formatBytes(storageSummary?.totalQuotaBytes ?? 0)}</strong>
-            <span>общий лимит</span>
-          </div>
-          <div>
-            <strong>
-              {formatBytes(storageSummary?.defaultUserQuotaBytes ?? 0)}
-            </strong>
-            <span>по умолчанию на пользователя</span>
-          </div>
-        </div>
-        <div className="admin-storage-controls">
-          <label>
-            Общий лимит, ГБ
-            <input
-              type="number"
-              min="1"
-              step="0.5"
-              value={totalQuotaGb}
-              onChange={(e) => setTotalQuotaGb(e.target.value)}
-            />
-          </label>
-          <label>
-            По умолчанию на пользователя, ГБ
-            <input
-              type="number"
-              min="0.1"
-              step="0.5"
-              value={defaultUserQuotaGb}
-              onChange={(e) => setDefaultUserQuotaGb(e.target.value)}
-            />
-          </label>
-          <button onClick={() => void saveStorageSettings()}>
-            Сохранить лимиты
-          </button>
-        </div>
-      </section>
-
-      <section className="admin-section admin-invite">
-        <div>
-          <h2>Инвайт-коды</h2>
-          <p>Создай код для нового участника.</p>
-        </div>
-        <div className="admin-invite-controls">
-          <input
-            value={inviteName}
-            onChange={(e) => setInviteName(e.target.value)}
-            placeholder="Имя нового участника"
-            maxLength={100}
-          />
-          <input
-            type="number"
-            min="1"
-            value={hours}
-            onChange={(e) => setHours(e.target.value)}
-            placeholder="Часы"
-          />
-          <button onClick={() => void generateCode()}>Сгенерировать</button>
-        </div>
-        {invite && (
-          <div className="admin-code">
-            <strong>{invite.code}</strong>
-            <button
-              onClick={() => void navigator.clipboard.writeText(invite.code)}
-            >
-              Копировать
-            </button>
-          </div>
-        )}
-        {invite && (
-          <div className="admin-invite-photo">
-            <input
-              type="file"
-              accept="image/*"
-              onChange={(e) => setInviteImageFile(e.target.files?.[0] ?? null)}
-            />
-            <button
-              onClick={() => void uploadInvitePhoto()}
-              disabled={!inviteImageFile || inviteImageUploading}
-            >
-              {inviteImageUploading ? "Загружаю..." : "Загрузить фото"}
-            </button>
-          </div>
-        )}
-        <div className="admin-codes">
-          {codes.map((code) => (
-            <div className="admin-code-row" key={code.id}>
-              <strong>{code.name}</strong>
-              {code.imageUrl && (
-                <img
-                  src={code.imageUrl}
-                  alt={code.name}
-                  style={{
-                    width: 40,
-                    height: 40,
-                    objectFit: "cover",
-                    borderRadius: 8,
-                  }}
-                />
-              )}
-              <span>{code.code}</span>
-              <span>
-                {code.usedAt
-                  ? "Использован"
-                  : code.expiresAt && new Date(code.expiresAt) < new Date()
-                    ? "Истёк"
-                    : "Активен"}
-              </span>
-              <button
-                className="admin-delete"
-                onClick={() =>
-                  void adminApi
-                    .deleteInviteCode(code.id)
-                    .then(() =>
-                      setCodes((current) =>
-                        current.filter((item) => item.id !== code.id),
-                      ),
-                    )
-                }
-              >
-                Удалить
-              </button>
-            </div>
-          ))}
-        </div>
-      </section>
-      <section className="admin-section admin-banners">
-        <div className="admin-section-heading">
-          <div>
-            <h2>Баннеры в сайдбаре</h2>
-            <p>Выбери постишку, которая будет показана вверху ленты.</p>
-          </div>
-        </div>
-        <div className="admin-banner-controls">
-          <select
-            value={selectedPostId}
-            onChange={(e) => setSelectedPostId(e.target.value)}
+                : undefined
+            }
           >
-            <option value="">Выбери постишку</option>
-            {postishki
-              .filter(
-                (post) => !banners.some((banner) => banner.postId === post.id),
-              )
-              .map((post) => (
-                <option value={post.id} key={post.id}>
-                  {post.title || "Без названия"}
-                </option>
-              ))}
-          </select>
-          <button onClick={() => void addBanner()} disabled={!selectedPostId}>
-            Добавить
-          </button>
-        </div>
-        <div className="admin-banners-list">
-          {banners.map((banner) => (
-            <div className="admin-banner-row" key={banner.id}>
-              {banner.imageUrl && <img src={banner.imageUrl} alt="" />}
-              <strong>{banner.title}</strong>
+            <div className="admin-stats">
+              <div className="admin-stat">
+                <span className="label">Занято</span>
+                <strong>{formatBytes(usedBytes)}</strong>
+              </div>
+              <div className="admin-stat">
+                <span className="label">Лимит сервера</span>
+                <strong>{formatBytes(totalBytes)}</strong>
+              </div>
+              <div className="admin-stat">
+                <span className="label">Роздано пользователям</span>
+                <strong>{formatBytes(allocatedBytes)}</strong>
+              </div>
+              <div className={`admin-stat ${overcommitted ? "is-danger" : ""}`}>
+                <span className="label">
+                  {overcommitted ? "Перебор по квотам" : "Свободно для раздачи"}
+                </span>
+                <strong>{formatBytes(Math.abs(freeToAllocate))}</strong>
+              </div>
+            </div>
+
+            <div
+              className="admin-capacity"
+              data-tooltip="Занято / роздано / лимит"
+              data-tooltip-align="start"
+            >
+              <div
+                className="admin-capacity__alloc"
+                style={{ width: `${capacityAllocPct}%` }}
+              />
+              <div
+                className="admin-capacity__used"
+                style={{ width: `${capacityUsedPct}%` }}
+              />
+            </div>
+            <div className="admin-legend">
               <span>
-                {new Date(banner.createdAt).toLocaleDateString("ru-RU")}
+                <i className="is-used" /> занято
               </span>
+              <span>
+                <i className="is-alloc" /> роздано квотами
+              </span>
+              {overcommitted && (
+                <span className="admin-badge-danger badge">
+                  Сумма квот больше лимита сервера
+                </span>
+              )}
+            </div>
+          </Card>
+
+          <Card
+            title="Лимиты"
+            description="Общий объём и квота, которая выдаётся новым пользователям."
+          >
+            <div className="admin-settings">
+              <div>
+                <label className="label-field">Общий лимит, ГБ</label>
+                <input
+                  className="input"
+                  type="number"
+                  min="1"
+                  step="0.5"
+                  value={totalQuotaGb}
+                  onChange={(e) => setTotalQuotaGb(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="label-field">
+                  По умолчанию на человека, ГБ
+                </label>
+                <input
+                  className="input"
+                  type="number"
+                  min="0.1"
+                  step="0.5"
+                  value={defaultUserQuotaGb}
+                  onChange={(e) => setDefaultUserQuotaGb(e.target.value)}
+                />
+              </div>
               <button
-                className="admin-delete"
-                onClick={() => void removeBanner(banner.id)}
+                className="btn btn-primary"
+                disabled={!storageDirty || savingStorage}
+                onClick={() => void saveStorageSettings()}
               >
-                Удалить
+                {savingStorage ? "Сохраняю..." : "Сохранить"}
               </button>
             </div>
-          ))}
-        </div>
-      </section>
-      <section className="admin-section">
-        <div className="admin-section-heading">
-          <div>
-            <h2>Пользователи</h2>
-            <p>{users.length} участников</p>
-          </div>
-        </div>
-        <div className="admin-users">
-          {users.map((user) => (
-            <div className="admin-user" key={user.id}>
-              <div className="admin-user-main">
-                <div
-                  className="admin-user-avatar"
-                  style={{ background: user.nicknameColor ?? "#4f46e5" }}
-                >
-                  {user.displayName.charAt(0).toUpperCase()}
+          </Card>
+
+          <Card
+            title="Квоты пользователей"
+            description="Отсортировано по занятому месту. Enter — сохранить, Esc — отмена."
+            actions={
+              <input
+                className="input admin-search"
+                placeholder="Поиск по нику или email"
+                value={storageQuery}
+                onChange={(e) => setStorageQuery(e.target.value)}
+              />
+            }
+          >
+            <div className="admin-list">
+              {storageUsers.map((user) => {
+                const quota = userQuota(user);
+                return (
+                  <div className="admin-row admin-row--quota" key={user.id}>
+                    <Link
+                      className="admin-person"
+                      to={`/profile/${encodeURIComponent(user.displayName)}`}
+                    >
+                      {user.avatarUrl ? (
+                        <AvatarMedia
+                          className="admin-avatar"
+                          src={getBrowserFileUrl(user.avatarUrl)}
+                          alt={`Аватар ${user.displayName}`}
+                        />
+                      ) : (
+                        <div
+                          className="admin-avatar"
+                          style={
+                            user.nicknameColor
+                              ? { background: user.nicknameColor }
+                              : undefined
+                          }
+                        >
+                          {user.displayName.charAt(0).toUpperCase()}
+                        </div>
+                      )}
+                      <div className="admin-person__text">
+                        <strong
+                          style={
+                            user.nicknameColor
+                              ? { color: user.nicknameColor }
+                              : undefined
+                          }
+                        >
+                          {user.displayName}
+                        </strong>
+                        <span>{user.email}</span>
+                      </div>
+                    </Link>
+                    <UsageBar used={user.storageUsedBytes} quota={quota} />
+                    <QuotaEditor
+                      key={`${user.id}-${formatGb(quota)}`}
+                      currentGb={formatGb(quota)}
+                      onSave={(gb) => updateUserQuota(user.id, gb)}
+                    />
+                  </div>
+                );
+              })}
+              {!storageUsers.length && (
+                <p className="admin-empty">Никого не найдено</p>
+              )}
+            </div>
+          </Card>
+        </>
+      )}
+
+      {!loading && !loadError && tab === "banners" && (
+        <div className="admin-split">
+          <Card
+            title="Сейчас на главной"
+            description={`${banners.length} в сайдбаре ленты`}
+          >
+            <div className="admin-list">
+              {banners.map((banner, index) => (
+                <div className="admin-row" key={banner.id}>
+                  <span className="admin-index">{index + 1}</span>
+                  {banner.imageUrl ? (
+                    <img className="admin-thumb" src={banner.imageUrl} alt="" />
+                  ) : (
+                    <div className="admin-thumb" />
+                  )}
+                  <div className="admin-person__text admin-grow">
+                    <strong>{banner.title || "Без названия"}</strong>
+                    <span>
+                      {new Date(banner.createdAt).toLocaleDateString("ru-RU")}
+                    </span>
+                  </div>
+                  <button
+                    className="btn btn-icon"
+                    data-tooltip="Убрать с главной"
+                    onClick={() => void removeBanner(banner.id)}
+                  >
+                    <TrashIcon />
+                  </button>
                 </div>
-                <div>
-                  <strong style={{ color: user.nicknameColor ?? "#4f46e5" }}>
-                    {user.displayName}
+              ))}
+              {!banners.length && (
+                <p className="admin-empty">
+                  Пока пусто — выбери постишки справа
+                </p>
+              )}
+            </div>
+          </Card>
+
+          <Card
+            title="Все постишки"
+            description={`${availablePosts.length} доступно`}
+            actions={
+              <input
+                className="input admin-search"
+                placeholder="Поиск по названию"
+                value={postQuery}
+                onChange={(e) => setPostQuery(e.target.value)}
+              />
+            }
+          >
+            <div className="admin-list admin-list--scroll">
+              {availablePosts.map((post) => (
+                <div className="admin-row" key={post.id}>
+                  <strong className="admin-grow admin-ellipsis">
+                    {post.title || "Без названия"}
                   </strong>
-                  <span>{user.email}</span>
-                  <small>
-                    {user.isOnline
-                      ? "Онлайн"
-                      : user.lastSeenAt
-                        ? `Был в сети ${new Date(user.lastSeenAt).toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" })}`
-                        : "Не в сети"}
-                  </small>
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => void addBanner(post.id)}
+                  >
+                    <PlusIcon />
+                    На главную
+                  </button>
                 </div>
+              ))}
+              {!availablePosts.length && (
+                <p className="admin-empty">Ничего не найдено</p>
+              )}
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {!loading && !loadError && tab === "users" && (
+        <Card
+          title="Пользователи"
+          description={`${users.length} участников`}
+          actions={
+            <input
+              className="input admin-search"
+              placeholder="Поиск по нику или email"
+              value={userQuery}
+              onChange={(e) => setUserQuery(e.target.value)}
+            />
+          }
+        >
+          <div className="admin-list">
+            {filteredUsers.map((user) => {
+              const expanded = expandedUserId === user.id;
+              const password = generatedPasswords[user.id];
+              return (
+                <div className="admin-user" key={user.id}>
+                  <div className="admin-row admin-row--user">
+                    <Link
+                      className="admin-person"
+                      to={`/profile/${encodeURIComponent(user.displayName)}`}
+                    >
+                      {user.avatarUrl ? (
+                        <AvatarMedia
+                          className="admin-avatar"
+                          src={getBrowserFileUrl(user.avatarUrl)}
+                          alt={`Аватар ${user.displayName}`}
+                        />
+                      ) : (
+                        <div
+                          className="admin-avatar"
+                          style={
+                            user.nicknameColor
+                              ? { background: user.nicknameColor }
+                              : undefined
+                          }
+                        >
+                          {user.displayName.charAt(0).toUpperCase()}
+                        </div>
+                      )}
+                      <div className="admin-person__text">
+                        <strong
+                          style={
+                            user.nicknameColor
+                              ? { color: user.nicknameColor }
+                              : undefined
+                          }
+                        >
+                          {user.displayName}
+                        </strong>
+                        <span>{user.email}</span>
+                      </div>
+                    </Link>
+                    <span
+                      className={`badge ${user.isOnline ? "badge-success" : "badge-neutral"}`}
+                    >
+                      <i className="badge-dot" />
+                      {formatLastSeen(user)}
+                    </span>
+                    <select
+                      className="input admin-input--select"
+                      value={user.roles[0] ?? "User"}
+                      onChange={(e) => void updateRole(user.id, e.target.value)}
+                    >
+                      <option value="User">User</option>
+                      <option value="Admin">Admin</option>
+                    </select>
+                    <div className="admin-actions">
+                      <button
+                        className={`btn btn-icon ${expanded ? "is-active" : ""}`}
+                        data-tooltip="Ник и email"
+                        onClick={() => toggleUserPanel(user)}
+                      >
+                        <EditIcon />
+                      </button>
+                      <button
+                        className="btn btn-icon"
+                        data-tooltip="Новый пароль"
+                        disabled={resettingPasswordUserId === user.id}
+                        onClick={() => askGeneratePassword(user)}
+                      >
+                        <KeyIcon />
+                      </button>
+                    </div>
+                  </div>
+
+                  {expanded && (
+                    <div className="admin-user-panel">
+                      <div>
+                        <label className="label-field">Ник</label>
+                        <input
+                          className="input"
+                          value={editDisplayName}
+                          minLength={2}
+                          maxLength={50}
+                          onChange={(e) => setEditDisplayName(e.target.value)}
+                        />
+                      </div>
+                      <div>
+                        <label className="label-field">Email</label>
+                        <input
+                          className="input"
+                          type="email"
+                          value={editEmail}
+                          maxLength={256}
+                          onChange={(e) => setEditEmail(e.target.value)}
+                        />
+                      </div>
+                      <div className="admin-actions">
+                        <button
+                          className="btn btn-primary"
+                          disabled={savingUserId === user.id}
+                          onClick={() => void saveUserProfile(user.id)}
+                        >
+                          {savingUserId === user.id
+                            ? "Сохраняю..."
+                            : "Сохранить"}
+                        </button>
+                        <button
+                          className="btn btn-ghost"
+                          onClick={() => setExpandedUserId(null)}
+                        >
+                          Отмена
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {password && (
+                    <div className="admin-user-panel admin-user-panel--password">
+                      <span className="label">Новый пароль</span>
+                      <code>{password}</code>
+                      <button
+                        className="btn btn-secondary btn-sm"
+                        onClick={() =>
+                          void copyText(password, "Пароль скопирован")
+                        }
+                      >
+                        <CopyIcon />
+                        Копировать
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {!filteredUsers.length && (
+              <p className="admin-empty">Никого не найдено</p>
+            )}
+          </div>
+        </Card>
+      )}
+
+      {!loading && !loadError && tab === "invites" && (
+        <>
+          <Card
+            title="Новый инвайт"
+            description="Создай код для нового участника. Срок действия — в часах, пусто — бессрочно."
+          >
+            <div className="admin-settings">
+              <div>
+                <label className="label-field">Имя участника</label>
+                <input
+                  className="input"
+                  value={inviteName}
+                  maxLength={100}
+                  placeholder="Как зовут"
+                  onChange={(e) => setInviteName(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && void generateCode()}
+                />
               </div>
-              <div className="admin-user-storage">
-                <div>
-                  <span>{formatBytes(user.storageUsedBytes)}</span>
-                  <small>использовано</small>
-                </div>
-                <label>
-                  Квота, ГБ
+              <div>
+                <label className="label-field">Срок, часы</label>
+                <input
+                  className="input admin-input--sm"
+                  type="number"
+                  min="1"
+                  value={hours}
+                  onChange={(e) => setHours(e.target.value)}
+                />
+              </div>
+              <button
+                className="btn btn-primary"
+                onClick={() => void generateCode()}
+              >
+                Сгенерировать
+              </button>
+            </div>
+
+            {invite && (
+              <div className="admin-code-box">
+                <code>{invite.code}</code>
+                <button
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => void copyText(invite.code, "Код скопирован")}
+                >
+                  <CopyIcon />
+                  Копировать
+                </button>
+                <div className="admin-code-box__photo">
                   <input
-                    type="number"
-                    min="0.1"
-                    step="0.5"
-                    value={formatGb(
-                      user.storageQuotaBytes ?? user.effectiveStorageQuotaBytes,
-                    )}
+                    className="input"
+                    type="file"
+                    accept="image/*"
                     onChange={(e) =>
-                      void updateUserQuota(user.id, e.target.value)
+                      setInviteImageFile(e.target.files?.[0] ?? null)
                     }
                   />
-                </label>
+                  <button
+                    className="btn btn-secondary"
+                    disabled={!inviteImageFile || inviteImageUploading}
+                    onClick={() => void uploadInvitePhoto()}
+                  >
+                    {inviteImageUploading ? "Загружаю..." : "Загрузить фото"}
+                  </button>
+                </div>
               </div>
-              <select
-                value={user.roles[0] ?? "User"}
-                onChange={(e) => void updateRole(user.id, e.target.value)}
-              >
-                <option value="User">User</option>
-                <option value="Admin">Admin</option>
-              </select>
+            )}
+          </Card>
+
+          <Card title="Все коды" description={`${codes.length} всего`}>
+            <div className="admin-list">
+              {codes.map((code) => {
+                const status = codeStatus(code);
+                return (
+                  <div className="admin-row" key={code.id}>
+                    {code.imageUrl ? (
+                      <img
+                        className="admin-thumb is-square"
+                        src={code.imageUrl}
+                        alt={code.name}
+                      />
+                    ) : (
+                      <div className="admin-thumb is-square" />
+                    )}
+                    <div className="admin-person__text admin-grow">
+                      <strong>{code.name}</strong>
+                      <span className="admin-mono">{code.code}</span>
+                    </div>
+                    <span
+                      className={`badge ${status.active ? "badge-success" : "badge-neutral"}`}
+                    >
+                      <i className="badge-dot" />
+                      {status.label}
+                    </span>
+                    <button
+                      className="btn btn-icon"
+                      data-tooltip="Копировать код"
+                      onClick={() => void copyText(code.code, "Код скопирован")}
+                    >
+                      <CopyIcon />
+                    </button>
+                    <button
+                      className="btn btn-icon"
+                      data-tooltip="Удалить"
+                      onClick={() =>
+                        setConfirm({
+                          title: "Удалить инвайт?",
+                          text: `Код для «${code.name}» перестанет работать.`,
+                          confirmLabel: "Удалить",
+                          onConfirm: () => void deleteCode(code.id),
+                        })
+                      }
+                    >
+                      <TrashIcon />
+                    </button>
+                  </div>
+                );
+              })}
+              {!codes.length && (
+                <p className="admin-empty">Инвайтов пока нет</p>
+              )}
             </div>
-          ))}
-        </div>
-      </section>
+          </Card>
+        </>
+      )}
+
+      <ConfirmDialog state={confirm} onClose={() => setConfirm(null)} />
+      <Toasts
+        items={toasts}
+        onDismiss={(id) => setToasts((c) => c.filter((t) => t.id !== id))}
+      />
     </div>
   );
 }

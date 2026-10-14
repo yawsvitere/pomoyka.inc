@@ -61,6 +61,15 @@ public class UpdateUserStorageQuotaRequest
     public long? QuotaBytes { get; set; }
 }
 
+public class UpdateAdminUserProfileRequest
+{
+    [Required, EmailAddress, MaxLength(256)]
+    public string Email { get; set; } = string.Empty;
+
+    [Required, MinLength(2), MaxLength(50)]
+    public string DisplayName { get; set; } = string.Empty;
+}
+
 public class AdminStorageSummaryDto
 {
     public long TotalQuotaBytes { get; set; }

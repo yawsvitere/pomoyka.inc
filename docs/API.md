@@ -102,6 +102,8 @@ Base URL: `http://localhost:5000`
 
 - `POST /archive/today` — архивация дня
 - `GET /users` — список пользователей
+- `PUT /users/{id}/profile` — изменение email и ника пользователя
+- `POST /users/{id}/generate-password` — установка и возврат нового случайного пароля
 - `PUT /users/{id}/role` — смена роли
 - `PUT /users/{id}/storage-quota` — смена квоты
 - `GET /storage-summary` — сводка по хранилищу
