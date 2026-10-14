@@ -144,6 +144,7 @@ public class PomoykaService
                 .Include(x => x.Files)
                 .Include(x => x.Blocks)
                 .Include(x => x.Comments)
+                    .ThenInclude(x => x.Files)
                 .Include(x => x.Likes)
                 .AsSplitQuery()
                 .ToListAsync(cancellationToken);
@@ -226,15 +227,31 @@ public class PomoykaService
 
                 foreach (var comment in post.Comments)
                 {
-                    archivedPost.Comments.Add(
-                        new ArchivedPostComment
+                    var archivedComment = new ArchivedPostComment
+                    {
+                        Id = Guid.NewGuid(),
+                        ArchivedPostId = archivedPost.Id,
+                        AuthorId = comment.AuthorId,
+                        Text = comment.Text,
+                        CreatedAt = comment.CreatedAt
+                    };
+                    foreach (var file in comment.Files)
+                    {
+                        var archivedFile = new ArchivedPostFile
                         {
                             Id = Guid.NewGuid(),
                             ArchivedPostId = archivedPost.Id,
-                            AuthorId = comment.AuthorId,
-                            Text = comment.Text,
-                            CreatedAt = comment.CreatedAt
-                        });
+                            CommentId = archivedComment.Id,
+                            FileName = file.FileName,
+                            StorageKey = file.StorageKey,
+                            ContentType = file.ContentType,
+                            SizeBytes = file.SizeBytes,
+                            UploadedAt = file.UploadedAt
+                        };
+                        archivedComment.Files.Add(archivedFile);
+                        archivedPost.Files.Add(archivedFile);
+                    }
+                    archivedPost.Comments.Add(archivedComment);
                 }
 
                 foreach (var like in post.Likes)

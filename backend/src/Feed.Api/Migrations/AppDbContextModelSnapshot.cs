@@ -154,21 +154,6 @@ namespace Feed.Api.Migrations
                     b.ToTable("ArchiveDays");
                 });
 
-            modelBuilder.Entity("Feed.Api.Models.ArchivedCommentLike", b =>
-                {
-                    b.Property<Guid>("ArchivedCommentId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("ArchivedCommentId", "UserId");
-
-                    b.HasIndex("UserId");
-
-                    b.ToTable("ArchivedCommentLikes");
-                });
-
             modelBuilder.Entity("Feed.Api.Models.ArchivedPost", b =>
                 {
                     b.Property<Guid>("Id")
@@ -271,6 +256,9 @@ namespace Feed.Api.Migrations
                     b.Property<Guid>("ArchivedPostId")
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("CommentId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("ContentType")
                         .IsRequired()
                         .HasColumnType("text");
@@ -293,6 +281,8 @@ namespace Feed.Api.Migrations
 
                     b.HasIndex("ArchivedPostId");
 
+                    b.HasIndex("CommentId");
+
                     b.ToTable("ArchivedPostFiles");
                 });
 
@@ -311,19 +301,41 @@ namespace Feed.Api.Migrations
                     b.ToTable("ArchivedPostLikes");
                 });
 
-            modelBuilder.Entity("Feed.Api.Models.CommentLike", b =>
+            modelBuilder.Entity("Feed.Api.Models.CommentFile", b =>
                 {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
                     b.Property<Guid>("CommentId")
                         .HasColumnType("uuid");
 
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid");
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
 
-                    b.HasKey("CommentId", "UserId");
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
 
-                    b.HasIndex("UserId");
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint");
 
-                    b.ToTable("CommentLikes");
+                    b.Property<string>("StorageKey")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTime>("UploadedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CommentId");
+
+                    b.ToTable("CommentFiles");
                 });
 
             modelBuilder.Entity("Feed.Api.Models.FeedBanner", b =>
@@ -569,6 +581,12 @@ namespace Feed.Api.Migrations
 
                     b.Property<Guid>("PostId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("ReactionData")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("text")
+                        .HasDefaultValue("[]");
 
                     b.Property<string>("Text")
                         .IsRequired()
@@ -845,25 +863,6 @@ namespace Feed.Api.Migrations
                     b.ToTable("AspNetUserTokens", (string)null);
                 });
 
-            modelBuilder.Entity("Feed.Api.Models.ArchivedCommentLike", b =>
-                {
-                    b.HasOne("Feed.Api.Models.ArchivedPostComment", "Comment")
-                        .WithMany("Likes")
-                        .HasForeignKey("ArchivedCommentId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("Feed.Api.Models.AppUser", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Comment");
-
-                    b.Navigation("User");
-                });
-
             modelBuilder.Entity("Feed.Api.Models.ArchivedPost", b =>
                 {
                     b.HasOne("Feed.Api.Models.ArchiveDay", "ArchiveDay")
@@ -928,7 +927,14 @@ namespace Feed.Api.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("Feed.Api.Models.ArchivedPostComment", "Comment")
+                        .WithMany("Files")
+                        .HasForeignKey("CommentId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
                     b.Navigation("ArchivedPost");
+
+                    b.Navigation("Comment");
                 });
 
             modelBuilder.Entity("Feed.Api.Models.ArchivedPostLike", b =>
@@ -950,23 +956,15 @@ namespace Feed.Api.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("Feed.Api.Models.CommentLike", b =>
+            modelBuilder.Entity("Feed.Api.Models.CommentFile", b =>
                 {
                     b.HasOne("Feed.Api.Models.PostComment", "Comment")
-                        .WithMany("Likes")
+                        .WithMany("Files")
                         .HasForeignKey("CommentId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("Feed.Api.Models.AppUser", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
                     b.Navigation("Comment");
-
-                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("Feed.Api.Models.FeedBanner", b =>
@@ -1182,7 +1180,7 @@ namespace Feed.Api.Migrations
 
             modelBuilder.Entity("Feed.Api.Models.ArchivedPostComment", b =>
                 {
-                    b.Navigation("Likes");
+                    b.Navigation("Files");
                 });
 
             modelBuilder.Entity("Feed.Api.Models.FileFolder", b =>
@@ -1208,7 +1206,7 @@ namespace Feed.Api.Migrations
 
             modelBuilder.Entity("Feed.Api.Models.PostComment", b =>
                 {
-                    b.Navigation("Likes");
+                    b.Navigation("Files");
                 });
 #pragma warning restore 612, 618
         }

@@ -42,8 +42,9 @@ public class CommentDto
     public string Text { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; }
     public UserDto Author { get; set; } = null!;
-    public int LikeCount { get; set; }
-    public bool IsLiked { get; set; }
+    public List<PostFileDto> Files { get; set; } = new();
+    public Dictionary<string, int> ReactionCounts { get; set; } = new();
+    public List<PostReactionDto> Reactions { get; set; } = new();
 }
 
 public class PostFileDto
@@ -60,6 +61,7 @@ public class CreateCommentRequest
 {
     [Required, MinLength(1), MaxLength(1000)]
     public string Text { get; set; } = string.Empty;
+    public List<IFormFile> Files { get; set; } = new();
 }
 
 public class ArticleBlockRequest

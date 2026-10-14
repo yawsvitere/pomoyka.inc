@@ -124,7 +124,7 @@ public class ArchiveController : ControllerBase
             .Include(p => p.Files)
             .Include(p => p.Blocks).ThenInclude(b => b.File)
             .Include(p => p.Comments).ThenInclude(c => c.Author)
-            .Include(p => p.Comments).ThenInclude(c => c.Likes)
+            .Include(p => p.Comments).ThenInclude(c => c.Files)
             .Include(p => p.Likes)
             .AsSplitQuery()
             .FirstOrDefaultAsync();
@@ -165,6 +165,7 @@ public class ArchiveController : ControllerBase
             },
 
             Files = post.Files
+                .Where(file => file.CommentId == null)
                 .Select(ToArchivedFileDto)
                 .ToList(),
 
@@ -182,8 +183,7 @@ public class ArchiveController : ControllerBase
                         DisplayName = c.Author.DisplayName,
                         AvatarUrl = c.Author.AvatarUrl == null ? null : $"/api/files/avatar/{c.Author.Id}?v={Uri.EscapeDataString(c.Author.AvatarUrl)}"
                     },
-                    LikeCount = c.Likes.Count,
-                    IsLiked = c.Likes.Any(l => l.UserId == userId)
+                    Files = c.Files.Select(ToArchivedFileDto).ToList(),
                 })
                 .ToList(),
             LikeCount = post.Likes.Count,

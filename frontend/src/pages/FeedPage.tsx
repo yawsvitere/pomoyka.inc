@@ -17,15 +17,6 @@ import "react-photo-view/dist/react-photo-view.css";
 
 const FEED_PAGE_SIZE = 4;
 
-function getCurrentUserId() {
-  try {
-    const token = localStorage.getItem("token");
-    return token ? JSON.parse(atob(token.split(".")[1])).sub : null;
-  } catch {
-    return null;
-  }
-}
-
 function sortPostsNewestFirst(posts: Post[]) {
   return [...posts].sort(
     (first, second) =>
@@ -251,13 +242,14 @@ export function FeedPage() {
     );
 
     connection.on(
-      "CommentLikeChanged",
+      "CommentReactionChanged",
       (
         postId: string,
         commentId: string,
-        likeCount: number,
-        liked: boolean,
-        actorId: string,
+        result: {
+          reactionCounts: Record<string, number>;
+          reactions: Comment["reactions"];
+        },
       ) => {
         setPosts((current) =>
           current.map((post) =>
@@ -268,11 +260,8 @@ export function FeedPage() {
                     comment.id === commentId
                       ? {
                           ...comment,
-                          likeCount,
-                          isLiked:
-                            actorId === getCurrentUserId()
-                              ? liked
-                              : comment.isLiked,
+                          reactionCounts: result.reactionCounts,
+                          reactions: result.reactions,
                         }
                       : comment,
                   ),
@@ -356,10 +345,14 @@ export function FeedPage() {
     notify("success", "Пост опубликован");
   }
 
-  async function handleCommentSubmit(postId: string, commentText: string) {
-    if (!commentText.trim()) return;
+  async function handleCommentSubmit(
+    postId: string,
+    commentText: string,
+    files: File[],
+  ): Promise<boolean> {
+    if (!commentText.trim()) return false;
     try {
-      const comment = await postsApi.createComment(postId, commentText);
+      const comment = await postsApi.createComment(postId, commentText, files);
       setPosts((currentPosts) =>
         currentPosts.map((post) =>
           post.id === postId &&
@@ -369,8 +362,40 @@ export function FeedPage() {
         ),
       );
       notify("success", "Комментарий добавлен");
+      return true;
     } catch {
       notify("error", "Не удалось добавить комментарий");
+      return false;
+    }
+  }
+
+  async function handleCommentReaction(
+    postId: string,
+    commentId: string,
+    emoji: string,
+  ) {
+    try {
+      const result = await postsApi.setCommentReaction(commentId, emoji);
+      setPosts((currentPosts) =>
+        currentPosts.map((post) =>
+          post.id === postId
+            ? {
+                ...post,
+                comments: post.comments.map((comment) =>
+                  comment.id === commentId
+                    ? {
+                        ...comment,
+                        reactionCounts: result.reactionCounts,
+                        reactions: result.reactions,
+                      }
+                    : comment,
+                ),
+              }
+            : post,
+        ),
+      );
+    } catch {
+      notify("error", "Не удалось поставить реакцию");
     }
   }
 
@@ -443,8 +468,11 @@ export function FeedPage() {
                         void handlePostReaction(post.id, emoji)
                       }
                       onDeletePost={(postId) => void handlePostDelete(postId)}
-                      onCommentSubmit={(text) =>
-                        void handleCommentSubmit(post.id, text)
+                      onCommentSubmit={(text, files) =>
+                        handleCommentSubmit(post.id, text, files)
+                      }
+                      onCommentReaction={(commentId, emoji) =>
+                        void handleCommentReaction(post.id, commentId, emoji)
                       }
                     />
                   ))}

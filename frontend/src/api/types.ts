@@ -59,8 +59,9 @@ export interface Comment {
   text: string;
   createdAt: string;
   author: User;
-  likeCount: number;
-  isLiked: boolean;
+  files: PostFile[];
+  reactionCounts: Record<string, number>;
+  reactions: PostReaction[];
 }
 
 export interface PostBlock {

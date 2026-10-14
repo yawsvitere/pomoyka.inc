@@ -71,7 +71,7 @@ public class PostsController : ControllerBase
             .Include(p => p.Comments)
                 .ThenInclude(c => c.Author)
             .Include(p => p.Comments)
-                .ThenInclude(c => c.Likes)
+                .ThenInclude(c => c.Files)
             .Include(p => p.Likes)
             .AsSplitQuery()
             .OrderByDescending(p => p.CreatedAt)
@@ -100,7 +100,7 @@ public class PostsController : ControllerBase
             .Include(p => p.Files)
             .Include(p => p.Blocks).ThenInclude(b => b.File)
             .Include(p => p.Comments).ThenInclude(c => c.Author)
-            .Include(p => p.Comments).ThenInclude(c => c.Likes)
+            .Include(p => p.Comments).ThenInclude(c => c.Files)
             .Include(p => p.Likes)
             .AsSplitQuery()
             .OrderByDescending(p => p.CreatedAt)
@@ -116,7 +116,9 @@ public class PostsController : ControllerBase
     public async Task<ActionResult<PostDto>> GetById(Guid id)
     {
         var post = await QueryPost(id).FirstOrDefaultAsync();
-        return post == null ? NotFound() : Ok(ToDto(post));
+        if (post == null) return NotFound();
+        var reactionAvatars = await GetReactionAvatars(new[] { post });
+        return Ok(ToDto(post, reactionAvatars));
     }
 
     [HttpGet("slug/{slug}")]
@@ -124,7 +126,9 @@ public class PostsController : ControllerBase
     {
         var post = await QueryPostBySlug(slug)
             .FirstOrDefaultAsync(p => p.IsPostishka);
-        return post == null ? NotFound() : Ok(ToDto(post));
+        if (post == null) return NotFound();
+        var reactionAvatars = await GetReactionAvatars(new[] { post });
+        return Ok(ToDto(post, reactionAvatars));
     }
 
     [AllowAnonymous]
@@ -134,7 +138,9 @@ public class PostsController : ControllerBase
         var post = await QueryPost(id)
             .Where(p => p.IsPostishka && p.AccessLevel == PostAccessLevel.Public)
             .FirstOrDefaultAsync();
-        return post == null ? NotFound() : Ok(ToDto(post));
+        if (post == null) return NotFound();
+        var reactionAvatars = await GetReactionAvatars(new[] { post });
+        return Ok(ToDto(post, reactionAvatars));
     }
 
     [AllowAnonymous]
@@ -144,7 +150,9 @@ public class PostsController : ControllerBase
         var post = await QueryPostBySlug(slug)
             .Where(p => p.IsPostishka && p.AccessLevel == PostAccessLevel.Public)
             .FirstOrDefaultAsync();
-        return post == null ? NotFound() : Ok(ToDto(post));
+        if (post == null) return NotFound();
+        var reactionAvatars = await GetReactionAvatars(new[] { post });
+        return Ok(ToDto(post, reactionAvatars));
     }
 
     [AllowAnonymous]
@@ -619,7 +627,7 @@ public class PostsController : ControllerBase
             .Include(p => p.Comments)
                 .ThenInclude(c => c.Author)
             .Include(p => p.Comments)
-                .ThenInclude(c => c.Likes)
+                .ThenInclude(c => c.Files)
             .Include(p => p.Likes)
             .AsSplitQuery()
             .OrderByDescending(p => p.CreatedAt)
@@ -853,7 +861,9 @@ public class PostsController : ControllerBase
     private async Task<Dictionary<Guid, string?>> GetReactionAvatars(IEnumerable<Post> posts)
     {
         var userIds = posts
-            .SelectMany(post => ReadReactions(post.ReactionData))
+            .SelectMany(post =>
+                ReadReactions(post.ReactionData)
+                    .Concat(post.Comments.SelectMany(comment => ReadReactions(comment.ReactionData))))
             .Select(reaction => reaction.UserId)
             .Distinct()
             .ToList();
@@ -915,13 +925,18 @@ public class PostsController : ControllerBase
                         NicknameColor = string.IsNullOrWhiteSpace(c.Author.NicknameColor) ? "#4f46e5" : c.Author.NicknameColor,
                         AvatarUrl = c.Author.AvatarUrl == null ? null : $"/api/files/avatar/{c.Author.Id}?v={Uri.EscapeDataString(c.Author.AvatarUrl)}"
                     },
-                    LikeCount = c.Likes.Count,
-                    IsLiked = c.Likes.Any(l => l.UserId == GetUserId())
+                    Files = c.Files.Select(ToCommentFileDto).ToList(),
+                    ReactionCounts = ReadReactions(c.ReactionData)
+                        .GroupBy(reaction => reaction.Emoji)
+                        .ToDictionary(group => group.Key, group => group.Count()),
+                    Reactions = ReadReactions(c.ReactionData)
+                        .Select(reaction => ToCommentReactionDto(reaction, reactionAvatars))
+                        .ToList()
                 })
                 .ToList(),
             LikeCount = post.Likes.Count,
-            IsLiked = post.Likes.Any(l => l.UserId == GetUserId())
-            ,ReactionCounts = ReadReactions(post.ReactionData)
+                IsLiked = post.Likes.Any(l => l.UserId == GetUserId()),
+                ReactionCounts = ReadReactions(post.ReactionData)
                 .GroupBy(r => r.Emoji)
                 .ToDictionary(group => group.Key, group => group.Count()),
             Reactions = ReadReactions(post.ReactionData).Select(r => new PostReactionDto
@@ -947,6 +962,25 @@ public class PostsController : ControllerBase
         catch (JsonException) { return new(); }
     }
 
+    private static PostReactionDto ToCommentReactionDto(
+        PostReactionEntry reaction,
+        IReadOnlyDictionary<Guid, string?>? reactionAvatars) => new()
+    {
+        Emoji = reaction.Emoji,
+        User = new UserDto
+        {
+            Id = reaction.UserId,
+            Email = string.Empty,
+            DisplayName = reaction.DisplayName,
+            NicknameColor = string.IsNullOrWhiteSpace(reaction.NicknameColor) ? "#4f46e5" : reaction.NicknameColor,
+            AvatarUrl = reactionAvatars != null &&
+                reactionAvatars.TryGetValue(reaction.UserId, out var avatarUrl) &&
+                avatarUrl != null
+                    ? $"/api/files/avatar/{reaction.UserId}?v={Uri.EscapeDataString(avatarUrl)}"
+                    : null
+        }
+    };
+
     private PostFileDto ToFileDto(PostFile file) => new()
     {
         Id = file.Id,
@@ -961,6 +995,16 @@ public class PostsController : ControllerBase
             : string.Empty
     };
 
+    private PostFileDto ToCommentFileDto(CommentFile file) => new()
+    {
+        Id = file.Id,
+        FileName = file.FileName,
+        ContentType = file.ContentType,
+        SizeBytes = file.SizeBytes,
+        DownloadUrl = $"{Request.Scheme}://{Request.Host}/api/files/comment/{file.Id}/download",
+        PreviewUrl = _storage.GetPublicObjectUrl(_storage.GetPreviewObjectKey(file.StorageKey))
+    };
+
     private IQueryable<Post> QueryPost(Guid id) => _db.Posts
         .AsNoTracking()
         .Where(p => p.Id == id)
@@ -968,7 +1012,7 @@ public class PostsController : ControllerBase
         .Include(p => p.Files)
         .Include(p => p.Blocks).ThenInclude(b => b.File)
         .Include(p => p.Comments).ThenInclude(c => c.Author)
-        .Include(p => p.Comments).ThenInclude(c => c.Likes)
+        .Include(p => p.Comments).ThenInclude(c => c.Files)
         .Include(p => p.Likes)
         .AsSplitQuery();
 
@@ -979,7 +1023,7 @@ public class PostsController : ControllerBase
         .Include(p => p.Files)
         .Include(p => p.Blocks).ThenInclude(b => b.File)
         .Include(p => p.Comments).ThenInclude(c => c.Author)
-        .Include(p => p.Comments).ThenInclude(c => c.Likes)
+        .Include(p => p.Comments).ThenInclude(c => c.Files)
         .Include(p => p.Likes)
         .AsSplitQuery();
 }

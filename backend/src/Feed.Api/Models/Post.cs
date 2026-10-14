@@ -46,21 +46,26 @@ public class PostComment
     public AppUser? Author { get; set; }
     public string Text { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-    public List<CommentLike> Likes { get; set; } = new();
+    public string ReactionData { get; set; } = "[]";
+    public List<CommentFile> Files { get; set; } = new();
+}
+
+public class CommentFile
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid CommentId { get; set; }
+    public PostComment? Comment { get; set; }
+    public string FileName { get; set; } = string.Empty;
+    public string StorageKey { get; set; } = string.Empty;
+    public string ContentType { get; set; } = string.Empty;
+    public long SizeBytes { get; set; }
+    public DateTime UploadedAt { get; set; } = DateTime.UtcNow;
 }
 
 public class PostLike
 {
     public Guid PostId { get; set; }
     public Post? Post { get; set; }
-    public Guid UserId { get; set; }
-    public AppUser? User { get; set; }
-}
-
-public class CommentLike
-{
-    public Guid CommentId { get; set; }
-    public PostComment? Comment { get; set; }
     public Guid UserId { get; set; }
     public AppUser? User { get; set; }
 }

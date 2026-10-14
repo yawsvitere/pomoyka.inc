@@ -5,18 +5,25 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { HubConnectionBuilder, LogLevel } from "@microsoft/signalr";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { PhotoProvider, PhotoView } from "react-photo-view";
 import * as postsApi from "../api/posts";
-import type { Post } from "../api/types";
+import type { Comment, Post } from "../api/types";
+import { useAuth } from "../context/AuthContext";
+import { CommentItem } from "../components/feed/CommentItem";
+import { CommentComposer } from "../components/feed/CommentComposer";
 import { ErrorPage } from "../components/ui/ErrorPage";
 import { Spinner } from "../components/ui/Spinner";
+import { useToast } from "../components/ui/useToast";
 import shareIcon from "../assets/icons/share.svg";
 import { sanitizeEmbedHtml } from "../utils/safeHtml";
 import { getBrowserFileUrl } from "../utils/fileUrl";
 import { AvatarMedia } from "../components/ui/AvatarMedia";
 import { getPostishkaUrl } from "../utils/postishkaUrl";
 import "../styles/pages/article.css";
+import "../styles/components/comment.css";
+import "../styles/components/post.css";
 import "react-photo-view/dist/react-photo-view.css";
 
 function articleDocument(post: Post) {
@@ -169,6 +176,8 @@ function getAuthorInitials(displayName: string) {
 export function ArticlePage({ publicOnly = false }: { publicOnly?: boolean }) {
   const { slug } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const { notify } = useToast();
   const [post, setPost] = useState<Post | null>(null);
   const [error, setError] = useState<404 | 500 | null>(null);
   const [isCopied, setIsCopied] = useState(false);
@@ -202,6 +211,54 @@ export function ArticlePage({ publicOnly = false }: { publicOnly?: boolean }) {
     if (window.location.pathname !== readableUrl)
       navigate(readableUrl, { replace: true });
   }, [navigate, post, publicOnly]);
+
+  useEffect(() => {
+    if (!post || !user) return;
+
+    const postId = post.id;
+    const connection = new HubConnectionBuilder()
+      .withUrl(`${import.meta.env.VITE_API_URL ?? ""}/hubs/feed`, {
+        accessTokenFactory: () => localStorage.getItem("token") ?? "",
+      })
+      .withAutomaticReconnect()
+      .configureLogging(LogLevel.Warning)
+      .build();
+
+    connection.on(
+      "CommentReactionChanged",
+      (
+        changedPostId: string,
+        commentId: string,
+        result: {
+          reactionCounts: Record<string, number>;
+          reactions: Comment["reactions"];
+        },
+      ) => {
+        if (changedPostId !== postId) return;
+        setPost((current) =>
+          current?.id === postId
+            ? {
+                ...current,
+                comments: current.comments.map((comment) =>
+                  comment.id === commentId
+                    ? {
+                        ...comment,
+                        reactionCounts: result.reactionCounts,
+                        reactions: result.reactions,
+                      }
+                    : comment,
+                ),
+              }
+            : current,
+        );
+      },
+    );
+
+    void connection.start().catch(() => undefined);
+    return () => {
+      void connection.stop();
+    };
+  }, [post?.id, user?.id]);
 
   useEffect(() => {
     if (!post) return;
@@ -247,6 +304,51 @@ export function ArticlePage({ publicOnly = false }: { publicOnly?: boolean }) {
         descriptionMeta.content = previousDescription;
     };
   }, [post]);
+
+  async function handleCommentSubmit(
+    text: string,
+    files: File[],
+  ): Promise<boolean> {
+    if (!post || !text.trim()) return false;
+    try {
+      const comment = await postsApi.createComment(post.id, text, files);
+      setPost((current) =>
+        current?.id === post.id &&
+        !current.comments.some((item) => item.id === comment.id)
+          ? { ...current, comments: [...current.comments, comment] }
+          : current,
+      );
+      notify("success", "Комментарий добавлен");
+      return true;
+    } catch {
+      notify("error", "Не удалось добавить комментарий");
+      return false;
+    }
+  }
+
+  async function handleCommentReaction(commentId: string, emoji: string) {
+    try {
+      const result = await postsApi.setCommentReaction(commentId, emoji);
+      setPost((current) =>
+        current
+          ? {
+              ...current,
+              comments: current.comments.map((comment) =>
+                comment.id === commentId
+                  ? {
+                      ...comment,
+                      reactionCounts: result.reactionCounts,
+                      reactions: result.reactions,
+                    }
+                  : comment,
+              ),
+            }
+          : current,
+      );
+    } catch {
+      notify("error", "Не удалось оценить комментарий");
+    }
+  }
 
   if (error === 404)
     return <ErrorPage status={404} title="Постишка не найдена" description="Она была закрыта владельцем или такого адреса не существует." />;
@@ -314,6 +416,32 @@ export function ArticlePage({ publicOnly = false }: { publicOnly?: boolean }) {
             </div>
           )}
         </div>
+        <section
+          className="article-comments post-comments"
+          aria-labelledby="article-comments-title"
+        >
+          <h2 id="article-comments-title">
+            Комментарии <span>{post.comments.length}</span>
+          </h2>
+          {post.comments.length > 0 ? (
+            post.comments.map((comment) => (
+              <CommentItem
+                key={comment.id}
+                comment={comment}
+                onReaction={user ? handleCommentReaction : undefined}
+              />
+            ))
+          ) : (
+            <p className="article-comments-empty">Комментариев пока нет.</p>
+          )}
+          {user ? (
+            <CommentComposer onSubmit={handleCommentSubmit} />
+          ) : (
+            <p className="article-comments-sign-in">
+              <Link to="/auth">Войдите</Link>, чтобы оставить комментарий.
+            </p>
+          )}
+        </section>
       </article>
     </PhotoProvider>
   );

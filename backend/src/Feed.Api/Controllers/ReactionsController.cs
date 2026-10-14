@@ -77,6 +77,80 @@ public class ReactionsController : ControllerBase
         return Ok(result);
     }
 
+    [HttpPut("comment/{commentId:guid}")]
+    public async Task<ActionResult<PostReactionResult>> SetCommentReaction(
+        Guid commentId,
+        SetReactionRequest request)
+    {
+        var userId = GetUserId();
+        if (userId == null) return Unauthorized();
+        if (!AllowedEmojis.Contains(request.Emoji))
+            return BadRequest(new { message = "Недопустимая реакция" });
+
+        var comment = await _db.PostComments.FirstOrDefaultAsync(item => item.Id == commentId);
+        if (comment == null) return NotFound();
+        var user = await _db.Users.FindAsync(userId.Value);
+        if (user == null) return Unauthorized();
+
+        var reactions = ReadReactions(comment.ReactionData);
+        var reaction = reactions.FirstOrDefault(item => item.UserId == userId.Value);
+        if (reaction?.Emoji == request.Emoji)
+            reactions.Remove(reaction);
+        else if (reaction == null)
+            reactions.Add(new PostReactionEntry
+            {
+                UserId = userId.Value,
+                Emoji = request.Emoji,
+                DisplayName = user.DisplayName,
+                NicknameColor = user.NicknameColor
+            });
+        else
+        {
+            reaction.Emoji = request.Emoji;
+            reaction.DisplayName = user.DisplayName;
+            reaction.NicknameColor = user.NicknameColor;
+        }
+
+        comment.ReactionData = JsonSerializer.Serialize(reactions);
+        await _db.SaveChangesAsync();
+
+        var reactionUserIds = reactions.Select(item => item.UserId).Distinct().ToList();
+        var reactionAvatars = await _db.Users
+            .Where(item => reactionUserIds.Contains(item.Id))
+            .ToDictionaryAsync(item => item.Id, item => item.AvatarUrl);
+        var result = CreateReactionResult(reactions, reactionAvatars);
+        await _hub.Clients.Group("feed-global").SendAsync(
+            "CommentReactionChanged",
+            comment.PostId,
+            commentId,
+            result,
+            userId.Value);
+        return Ok(result);
+    }
+
+    private static PostReactionResult CreateReactionResult(
+        List<PostReactionEntry> reactions,
+        IReadOnlyDictionary<Guid, string?> reactionAvatars) => new()
+    {
+        ReactionCounts = reactions
+            .GroupBy(item => item.Emoji)
+            .ToDictionary(group => group.Key, group => group.Count()),
+        Reactions = reactions.Select(item => new PostReactionDto
+        {
+            Emoji = item.Emoji,
+            User = new UserDto
+            {
+                Id = item.UserId,
+                Email = string.Empty,
+                DisplayName = item.DisplayName,
+                NicknameColor = string.IsNullOrWhiteSpace(item.NicknameColor) ? "#4f46e5" : item.NicknameColor,
+                AvatarUrl = reactionAvatars.TryGetValue(item.UserId, out var avatarUrl) && avatarUrl != null
+                    ? $"/api/files/avatar/{item.UserId}?v={Uri.EscapeDataString(avatarUrl)}"
+                    : null
+            }
+        }).ToList()
+    };
+
     private static List<PostReactionEntry> ReadReactions(string? data)
     {
         try { return JsonSerializer.Deserialize<List<PostReactionEntry>>(data ?? "[]") ?? new(); }

@@ -13,10 +13,10 @@ import "@videojs/react/video/skin.css";
 import { PhotoProvider, PhotoView } from "react-photo-view";
 import type { Post } from "../../api/types";
 import { CommentItem } from "./CommentItem";
+import { CommentComposer } from "./CommentComposer";
 import { ContextMenu } from "./ContextMenu";
 import { useAuth } from "../../context/AuthContext";
 import { getBrowserFileUrl } from "../../utils/fileUrl";
-import sendIcon from "../../assets/icons/send.svg";
 import { ReactionIcon } from "./ContextMenu";
 import { AvatarMedia } from "../ui/AvatarMedia";
 import { getPostishkaUrl } from "../../utils/postishkaUrl";
@@ -30,9 +30,9 @@ interface PostCardProps {
   showArticleLink?: boolean;
   isOwnPost?: boolean;
   onOpenComments?: () => void;
-  onCommentLike?: (commentId: string) => void;
+  onCommentReaction?: (commentId: string, emoji: string) => void;
   onReaction?: (emoji: string) => void;
-  onCommentSubmit?: (commentText: string) => void;
+  onCommentSubmit?: (commentText: string, files: File[]) => Promise<boolean>;
   onDeletePost?: (postId: string) => void;
 }
 
@@ -423,7 +423,7 @@ export function PostCard({
   showArticleLink = false,
   isOwnPost = false,
   onOpenComments,
-  onCommentLike,
+  onCommentReaction,
   onReaction,
   onCommentSubmit,
   onDeletePost,
@@ -695,36 +695,11 @@ export function PostCard({
                   <CommentItem
                     key={comment.id}
                     comment={comment}
-                    onLike={onCommentLike}
+                    onReaction={onCommentReaction}
                   />
                 ))}
                 {onCommentSubmit && (
-                  <form
-                    className="comment-form"
-                    onSubmit={(event) => {
-                      event.preventDefault();
-                      const input = event.currentTarget.elements.namedItem(
-                        "comment",
-                      ) as HTMLInputElement;
-                      onCommentSubmit(input.value);
-                      input.value = "";
-                    }}
-                  >
-                    <input
-                      className="input"
-                      name="comment"
-                      placeholder="Написать комментарий..."
-                      maxLength={1000}
-                    />
-                    <button
-                      className="btn-icon-filled"
-                      type="submit"
-                      aria-label="Отправить комментарий"
-                      data-tooltip="Отправить"
-                    >
-                      <img src={sendIcon} alt="" aria-hidden="true" />
-                    </button>
-                  </form>
+                  <CommentComposer onSubmit={onCommentSubmit} />
                 )}
               </div>
             )}

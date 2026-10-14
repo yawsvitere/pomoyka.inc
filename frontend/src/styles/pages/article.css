@@ -207,6 +207,35 @@
   font-size: 18px;
   line-height: 1.8;
 }
+.article-comments {
+  margin-top: 32px;
+  padding-bottom: 48px;
+}
+.article-comments h2 {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0 0 6px;
+  color: var(--color-text);
+  font-size: 20px;
+  font-weight: 600;
+}
+.article-comments h2 span,
+.article-comments-empty,
+.article-comments-sign-in {
+  color: var(--color-text-faint);
+  font-size: 13px;
+}
+.article-comments h2 span {
+  font-weight: 400;
+}
+.article-comments-empty,
+.article-comments-sign-in {
+  margin: 0;
+}
+.article-comments-sign-in a {
+  color: var(--color-text);
+}
 .article-content p {
   margin: 0 0 24px;
   white-space: pre-wrap;

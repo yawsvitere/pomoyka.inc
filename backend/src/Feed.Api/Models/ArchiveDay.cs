@@ -83,7 +83,7 @@ public class ArchivedPostComment
     public AppUser? Author { get; set; }
     public string Text { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-    public List<ArchivedCommentLike> Likes { get; set; } = new();
+    public List<ArchivedPostFile> Files { get; set; } = new();
 }
 
 public class ArchivedPostLike
@@ -94,19 +94,13 @@ public class ArchivedPostLike
     public AppUser? User { get; set; }
 }
 
-public class ArchivedCommentLike
-{
-    public Guid ArchivedCommentId { get; set; }
-    public ArchivedPostComment? Comment { get; set; }
-    public Guid UserId { get; set; }
-    public AppUser? User { get; set; }
-}
-
 public class ArchivedPostFile
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid ArchivedPostId { get; set; }
     public ArchivedPost? ArchivedPost { get; set; }
+    public Guid? CommentId { get; set; }
+    public ArchivedPostComment? Comment { get; set; }
 
     public string FileName { get; set; } = string.Empty;
     public string StorageKey { get; set; } = string.Empty; 

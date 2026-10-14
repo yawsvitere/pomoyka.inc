@@ -950,6 +950,28 @@ public class FilesController : ControllerBase
         return File(objectResponse.ResponseStream, objectResponse.Headers.ContentType ?? file.ContentType, file.FileName);
     }
 
+    [HttpGet("comment/{id:guid}/download")]
+    [AllowAnonymous]
+    public async Task<IActionResult> DownloadCommentFile(Guid id)
+    {
+        var file = await _db.CommentFiles
+            .AsNoTracking()
+            .Include(x => x.Comment)
+                .ThenInclude(x => x!.Post)
+            .FirstOrDefaultAsync(x => x.Id == id);
+        if (file?.Comment?.Post == null) return NotFound();
+        if (User.Identity?.IsAuthenticated != true &&
+            (!file.Comment.Post.IsPostishka ||
+             file.Comment.Post.AccessLevel != PostAccessLevel.Public))
+            return NotFound();
+
+        var objectResponse = await _storage.GetObjectAsync(file.StorageKey);
+        return File(
+            objectResponse.ResponseStream,
+            objectResponse.Headers.ContentType ?? file.ContentType,
+            file.FileName);
+    }
+
     [HttpGet("archive/{id:guid}/download")]
     public async Task<IActionResult> DownloadArchivedFile(Guid id)
     {

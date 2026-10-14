@@ -73,28 +73,6 @@ export function ArchivePage() {
     });
   }
 
-  async function handleCommentLike(postId: string, commentId: string) {
-    const result = await postsApi.toggleCommentLike(commentId);
-    setArchiveDay(
-      (current) =>
-        current && {
-          ...current,
-          posts: current.posts.map((post) =>
-            post.id === postId
-              ? {
-                  ...post,
-                  comments: post.comments.map((comment) =>
-                    comment.id === commentId
-                      ? { ...comment, ...result }
-                      : comment,
-                  ),
-                }
-              : post,
-          ),
-        },
-    );
-  }
-
   async function handlePostDelete(postId: string) {
     try {
       await postsApi.deletePost(postId);
@@ -179,9 +157,6 @@ export function ArchivePage() {
                   (archiveDay.posts[index - 1].author.id !== post.author.id &&
                     archiveDay.posts[index - 1].author.displayName !==
                       post.author.displayName)
-                }
-                onCommentLike={(commentId) =>
-                  void handleCommentLike(post.id, commentId)
                 }
                 onDeletePost={(postId) => void handlePostDelete(postId)}
               />

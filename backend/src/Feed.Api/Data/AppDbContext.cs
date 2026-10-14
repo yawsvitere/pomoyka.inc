@@ -14,8 +14,8 @@ public class AppDbContext : IdentityDbContext<AppUser, IdentityRole<Guid>, Guid>
     public DbSet<PostFile> PostFiles => Set<PostFile>();
     public DbSet<PostBlock> PostBlocks => Set<PostBlock>();
     public DbSet<PostComment> PostComments => Set<PostComment>();
+    public DbSet<CommentFile> CommentFiles => Set<CommentFile>();
     public DbSet<PostLike> PostLikes => Set<PostLike>();
-    public DbSet<CommentLike> CommentLikes => Set<CommentLike>();
     public DbSet<InviteCode> InviteCodes => Set<InviteCode>();
     public DbSet<FileFolder> FileFolders => Set<FileFolder>();
     public DbSet<UserFile> UserFiles => Set<UserFile>();
@@ -28,7 +28,6 @@ public class AppDbContext : IdentityDbContext<AppUser, IdentityRole<Guid>, Guid>
     public DbSet<ArchivedPostBlock> ArchivedPostBlocks => Set<ArchivedPostBlock>();
     public DbSet<ArchivedPostComment> ArchivedPostComments => Set<ArchivedPostComment>();
     public DbSet<ArchivedPostLike> ArchivedPostLikes => Set<ArchivedPostLike>();
-    public DbSet<ArchivedCommentLike> ArchivedCommentLikes => Set<ArchivedCommentLike>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -138,11 +137,24 @@ public class AppDbContext : IdentityDbContext<AppUser, IdentityRole<Guid>, Guid>
         builder.Entity<PostComment>(e =>
         {
             e.Property(x => x.Text).HasMaxLength(1000).IsRequired();
+            e.Property(x => x.ReactionData).HasDefaultValue("[]");
             e.HasOne(x => x.Post).WithMany(x => x.Comments)
                 .HasForeignKey(x => x.PostId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(x => x.Author).WithMany()
                 .HasForeignKey(x => x.AuthorId).OnDelete(DeleteBehavior.Restrict);
             e.HasIndex(x => new { x.PostId, x.CreatedAt });
+            e.HasMany(x => x.Files)
+                .WithOne(x => x.Comment)
+                .HasForeignKey(x => x.CommentId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<CommentFile>(e =>
+        {
+            e.Property(x => x.FileName).HasMaxLength(255).IsRequired();
+            e.Property(x => x.StorageKey).HasMaxLength(500).IsRequired();
+            e.Property(x => x.ContentType).HasMaxLength(255).IsRequired();
+            e.HasIndex(x => x.CommentId);
         });
 
         builder.Entity<PostLike>(e =>
@@ -151,13 +163,6 @@ public class AppDbContext : IdentityDbContext<AppUser, IdentityRole<Guid>, Guid>
             e.HasOne(x => x.Post).WithMany(x => x.Likes).HasForeignKey(x => x.PostId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         });
-        builder.Entity<CommentLike>(e =>
-        {
-            e.HasKey(x => new { x.CommentId, x.UserId });
-            e.HasOne(x => x.Comment).WithMany(x => x.Likes).HasForeignKey(x => x.CommentId).OnDelete(DeleteBehavior.Cascade);
-            e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
-        });
-
         builder.Entity<Pomoyka>(e =>
         {
             e.ToTable("Pomojkas");
@@ -218,6 +223,10 @@ public class AppDbContext : IdentityDbContext<AppUser, IdentityRole<Guid>, Guid>
             e.HasOne(x => x.Author).WithMany()
                 .HasForeignKey(x => x.AuthorId).OnDelete(DeleteBehavior.Restrict);
             e.HasIndex(x => new { x.ArchivedPostId, x.CreatedAt });
+            e.HasMany(x => x.Files)
+                .WithOne(x => x.Comment)
+                .HasForeignKey(x => x.CommentId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         builder.Entity<ArchivedPostLike>(e =>
@@ -227,12 +236,6 @@ public class AppDbContext : IdentityDbContext<AppUser, IdentityRole<Guid>, Guid>
             e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         });
 
-        builder.Entity<ArchivedCommentLike>(e =>
-        {
-            e.HasKey(x => new { x.ArchivedCommentId, x.UserId });
-            e.HasOne(x => x.Comment).WithMany(x => x.Likes).HasForeignKey(x => x.ArchivedCommentId).OnDelete(DeleteBehavior.Cascade);
-            e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
-        });
 
         builder.Entity<InviteCode>(e =>
         {

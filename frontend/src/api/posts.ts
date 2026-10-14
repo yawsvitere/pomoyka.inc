@@ -29,10 +29,17 @@ export async function deletePost(id: string) {
   await apiClient.delete(`/api/posts/${id}`);
 }
 
-export async function createComment(postId: string, text: string) {
+export async function createComment(
+  postId: string,
+  text: string,
+  files: File[] = [],
+) {
+  const formData = new FormData();
+  formData.append("text", text);
+  files.forEach((file) => formData.append("files", file, file.name));
   const { data } = await apiClient.post<Comment>(
     `/api/posts/${postId}/comments`,
-    { text },
+    formData,
   );
   return data;
 }
@@ -57,13 +64,6 @@ export async function getUserPosts(displayName: string) {
 export async function togglePostLike(postId: string) {
   const { data } = await apiClient.post<{ liked: boolean; likeCount: number }>(
     `/api/likes/post/${postId}`,
-  );
-  return data;
-}
-
-export async function toggleCommentLike(commentId: string) {
-  const { data } = await apiClient.post<{ liked: boolean; likeCount: number }>(
-    `/api/likes/comment/${commentId}`,
   );
   return data;
 }
@@ -135,5 +135,13 @@ export async function setPostReaction(postId: string, emoji: string) {
     reactionCounts: Record<string, number>;
     reactions: PostReaction[];
   }>(`/api/reactions/post/${postId}`, { emoji });
+  return data;
+}
+
+export async function setCommentReaction(commentId: string, emoji: string) {
+  const { data } = await apiClient.put<{
+    reactionCounts: Record<string, number>;
+    reactions: PostReaction[];
+  }>(`/api/reactions/comment/${commentId}`, { emoji });
   return data;
 }
