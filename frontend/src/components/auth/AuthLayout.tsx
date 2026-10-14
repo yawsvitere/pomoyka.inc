@@ -12,11 +12,21 @@ export function AuthLayout({ title, children }: AuthLayoutProps) {
       <div className="auth-card">
         <aside className="auth-side">
           <div className="auth-background" aria-hidden="true">
-            <div className="auth-background-slide" />
-            <div className="auth-background-slide" />
-            <div className="auth-background-slide" />
-            <div className="auth-background-slide" />
-            <div className="auth-background-slide" />
+            <div className="auth-background-slide">
+              <img src="/authimage.webp" alt="" />
+            </div>
+            <div className="auth-background-slide">
+              <img src="/authimage2.webp" alt="" />
+            </div>
+            <div className="auth-background-slide">
+              <img src="/authimage3.webp" alt="" />
+            </div>
+            <div className="auth-background-slide">
+              <img src="/authimage4.webp" alt="" />
+            </div>
+            <div className="auth-background-slide">
+              <img src="/authimage5.webp" alt="" />
+            </div>
           </div>
 
           <div className="auth-logo">
