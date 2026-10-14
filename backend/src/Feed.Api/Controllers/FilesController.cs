@@ -12,6 +12,10 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Net.Http.Headers;
 using Amazon.S3;
 using System.Diagnostics;
+using System.Net;
+using System.Net.Sockets;
+using System.Text.RegularExpressions;
+using System.Text;
 using System.Text.Encodings.Web;
 using SixLabors.Fonts;
 using SixLabors.ImageSharp;
@@ -472,7 +476,7 @@ public class FilesController : ControllerBase
             .OrderBy(x => x.UploadedAt)
             .Select(x => new { x.Id, x.FileName, Url = _storage.GetPublicObjectUrl(x.StorageKey), PreviewUrl = x.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase) ? _storage.GetPublicObjectUrl(_storage.GetPreviewObjectKey(x.StorageKey)) : x.ContentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase) ? _storage.GetPublicObjectUrl(_storage.GetVideoPreviewObjectKey(x.StorageKey)) : null, x.ContentType, x.Width, x.Height })
             .ToList();
-        return Ok(new { folder.Name, images });
+        return Ok(new { folder.Name, folder.AccessLevel, images });
     }
 
     [AllowAnonymous]
@@ -518,6 +522,148 @@ public class FilesController : ControllerBase
             """;
 
         return Content(html, "text/html; charset=utf-8");
+    }
+
+    [HttpGet("link-preview")]
+    public async Task<ActionResult<object>> GetLinkPreview(
+        [FromQuery] string url,
+        CancellationToken cancellationToken)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var target) ||
+            !IsHttpUrl(target) ||
+            target.UserInfo.Length > 0)
+            return BadRequest(new { message = "Укажите корректную ссылку" });
+
+        try
+        {
+            for (var redirectCount = 0; redirectCount <= 3; redirectCount++)
+            {
+                var addresses = await GetPublicAddressesAsync(target, cancellationToken);
+                if (addresses.Length == 0)
+                    return BadRequest(new { message = "Ссылка ведёт на недоступный адрес" });
+
+                using var handler = new SocketsHttpHandler
+                {
+                    AllowAutoRedirect = false,
+                    ConnectTimeout = TimeSpan.FromSeconds(4),
+                    AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate,
+                    ConnectCallback = async (context, token) =>
+                    {
+                        Exception? lastException = null;
+                        foreach (var address in addresses)
+                        {
+                            var socket = new Socket(address.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
+                            try
+                            {
+                                await socket.ConnectAsync(
+                                    new IPEndPoint(address, context.DnsEndPoint.Port),
+                                    token);
+                                return new NetworkStream(socket, ownsSocket: true);
+                            }
+                            catch (Exception exception) when (
+                                exception is SocketException or OperationCanceledException)
+                            {
+                                socket.Dispose();
+                                lastException = exception;
+                                if (exception is OperationCanceledException)
+                                    throw;
+                            }
+                        }
+
+                        throw new HttpRequestException("Could not connect to the preview host", lastException);
+                    },
+                };
+                using var client = new HttpClient(handler)
+                {
+                    Timeout = TimeSpan.FromSeconds(8),
+                };
+                using var request = new HttpRequestMessage(HttpMethod.Get, target);
+                request.Headers.UserAgent.ParseAdd("PomoykaLinkPreview/1.0");
+                using var response = await client.SendAsync(
+                    request,
+                    HttpCompletionOption.ResponseHeadersRead,
+                    cancellationToken);
+
+                if ((int)response.StatusCode is >= 300 and < 400 &&
+                    response.Headers.Location is { } location)
+                {
+                    var nextTarget = location.IsAbsoluteUri
+                        ? location
+                        : new Uri(target, location);
+                    if (redirectCount == 3 ||
+                        !IsHttpUrl(nextTarget) ||
+                        nextTarget.UserInfo.Length > 0)
+                        return BadRequest(new { message = "Ссылка перенаправляет на недопустимый адрес" });
+                    target = nextTarget;
+                    continue;
+                }
+
+                return await BuildLinkPreviewResponseAsync(response, target, cancellationToken);
+            }
+            return BadRequest(new { message = "Ссылка перенаправляет слишком много раз" });
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return BadRequest(new { message = "Превью ссылки не удалось загрузить вовремя" });
+        }
+        catch (HttpRequestException)
+        {
+            return BadRequest(new { message = "Не удалось загрузить превью ссылки" });
+        }
+        catch (SocketException)
+        {
+            return BadRequest(new { message = "Не удалось найти адрес сайта" });
+        }
+    }
+
+    private async Task<ActionResult<object>> BuildLinkPreviewResponseAsync(
+        HttpResponseMessage response,
+        Uri target,
+        CancellationToken cancellationToken)
+    {
+        if (!response.IsSuccessStatusCode ||
+            response.Content.Headers.ContentType?.MediaType is not ("text/html" or "application/xhtml+xml"))
+            return BadRequest(new { message = "Не удалось получить превью этой ссылки" });
+
+        if (response.Content.Headers.ContentLength is > 1_048_576)
+            return BadRequest(new { message = "Страница слишком большая для превью" });
+
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        using var buffer = new MemoryStream();
+        var chunk = new byte[16 * 1024];
+        while (true)
+        {
+            var read = await stream.ReadAsync(chunk, cancellationToken);
+            if (read == 0)
+                break;
+            if (buffer.Length + read > 1_048_576)
+                return BadRequest(new { message = "Страница слишком большая для превью" });
+            await buffer.WriteAsync(chunk.AsMemory(0, read), cancellationToken);
+        }
+
+        var html = Encoding.UTF8.GetString(buffer.ToArray());
+        var title = GetMetaContent(html, "og:title") ??
+            Regex.Match(html, @"<title\b[^>]*>(.*?)</title>", RegexOptions.IgnoreCase | RegexOptions.Singleline)
+                .Groups[1].Value;
+        var description = GetMetaContent(html, "og:description") ??
+            GetMetaContent(html, "description") ?? "";
+        var image = GetMetaContent(html, "og:image");
+        string? imageUrl = null;
+        if (!string.IsNullOrWhiteSpace(image) &&
+            Uri.TryCreate(target, image, out var resolvedImage) &&
+            IsHttpUrl(resolvedImage) &&
+            resolvedImage.UserInfo.Length == 0 &&
+            (await GetPublicAddressesAsync(resolvedImage, cancellationToken)).Length > 0)
+            imageUrl = resolvedImage.AbsoluteUri;
+
+        return Ok(new
+        {
+            url = target.AbsoluteUri,
+            title = CleanPreviewText(title, 200),
+            description = CleanPreviewText(description, 500),
+            imageUrl,
+            siteName = target.Host,
+        });
     }
 
     [AllowAnonymous]
@@ -1244,6 +1390,103 @@ public class FilesController : ControllerBase
         var scheme = forwardedProto is "http" or "https" ? forwardedProto : Request.Scheme;
         var host = string.IsNullOrWhiteSpace(forwardedHost) ? Request.Host.Value : forwardedHost;
         return $"{scheme}://{host}";
+    }
+
+    private static bool IsHttpUrl(Uri uri) =>
+        uri.Scheme is "http" or "https" &&
+        !string.IsNullOrWhiteSpace(uri.Host);
+
+    private static async Task<IPAddress[]> GetPublicAddressesAsync(
+        Uri uri,
+        CancellationToken cancellationToken)
+    {
+        IPAddress[] addresses;
+        if (IPAddress.TryParse(uri.Host, out var literalAddress))
+        {
+            addresses = [literalAddress];
+        }
+        else
+        {
+            addresses = await Dns.GetHostAddressesAsync(uri.DnsSafeHost, cancellationToken);
+        }
+
+        return addresses.Length > 0 && addresses.All(IsPublicAddress)
+            ? addresses
+            : [];
+    }
+
+    private static bool IsPublicAddress(IPAddress address)
+    {
+        if (address.IsIPv4MappedToIPv6)
+            return IsPublicAddress(address.MapToIPv4());
+        if (IPAddress.IsLoopback(address) ||
+            address.Equals(IPAddress.Any) ||
+            address.Equals(IPAddress.IPv6Any) ||
+            address.IsIPv6LinkLocal ||
+            address.IsIPv6SiteLocal ||
+            address.IsIPv6Multicast)
+            return false;
+
+        var bytes = address.GetAddressBytes();
+        if (address.AddressFamily == AddressFamily.InterNetworkV6)
+            return (bytes[0] & 0xE0) == 0x20 &&
+                !(bytes[0] == 0x20 && bytes[1] == 0x01 && bytes[2] == 0x0D && bytes[3] == 0xB8);
+
+        if (address.AddressFamily != AddressFamily.InterNetwork)
+            return false;
+
+        var first = bytes[0];
+        var second = bytes[1];
+        var third = bytes[2];
+        return first != 0 &&
+            first != 10 &&
+            first != 127 &&
+            !(first == 100 && second is >= 64 and <= 127) &&
+            !(first == 169 && second == 254) &&
+            !(first == 172 && second is >= 16 and <= 31) &&
+            !(first == 192 && second == 0 && third == 0) &&
+            !(first == 192 && second == 88 && third == 99) &&
+            !(first == 192 && second == 168) &&
+            !(first == 198 && second is 18 or 19) &&
+            !(first == 198 && second == 51 && third == 100) &&
+            !(first == 203 && second == 0 && third == 113) &&
+            first < 224;
+    }
+
+    private static string? GetMetaContent(string html, string key)
+    {
+        foreach (Match tag in Regex.Matches(html, @"<meta\b[^>]*>", RegexOptions.IgnoreCase))
+        {
+            var attributes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (Match attribute in Regex.Matches(
+                         tag.Value,
+                         @"([a-z_:][a-z0-9_:.-]*)\s*=\s*(?:""([^""]*)""|'([^']*)'|([^\s>]+))",
+                         RegexOptions.IgnoreCase))
+            {
+                attributes[attribute.Groups[1].Value] =
+                    attribute.Groups[2].Success
+                        ? attribute.Groups[2].Value
+                        : attribute.Groups[3].Success
+                            ? attribute.Groups[3].Value
+                            : attribute.Groups[4].Value;
+            }
+
+            if ((attributes.GetValueOrDefault("property") ?? attributes.GetValueOrDefault("name"))
+                ?.Equals(key, StringComparison.OrdinalIgnoreCase) == true &&
+                attributes.TryGetValue("content", out var content))
+                return WebUtility.HtmlDecode(content);
+        }
+
+        return null;
+    }
+
+    private static string CleanPreviewText(string? value, int maxLength)
+    {
+        var clean = Regex.Replace(WebUtility.HtmlDecode(value ?? ""), @"<[^>]*>", "")
+            .Replace('\r', ' ')
+            .Replace('\n', ' ')
+            .Trim();
+        return clean.Length <= maxLength ? clean : clean[..maxLength];
     }
 
     private async Task<Image<Rgba32>?> TryLoadGalleryImageAsync(

@@ -42,8 +42,22 @@ export interface PinterestMedia {
   downloadUrl: string;
   previewUrl: string | null;
 }
+export interface LinkPreview {
+  url: string;
+  title: string;
+  description: string;
+  imageUrl: string | null;
+  siteName: string;
+}
 export async function getLibrary() {
   return (await apiClient.get<Library>("/api/files/library")).data;
+}
+export async function getLinkPreview(url: string) {
+  return (
+    await apiClient.get<LinkPreview>("/api/files/link-preview", {
+      params: { url },
+    })
+  ).data;
 }
 export async function getCommonLibrary() {
   return (await apiClient.get<Library>("/api/files/common")).data;
@@ -179,6 +193,7 @@ export async function getGallery(id: string) {
   return (
     await apiClient.get<{
       name: string;
+      accessLevel: FileAccessLevel;
       images: {
         id: string;
         fileName: string;

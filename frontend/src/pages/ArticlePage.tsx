@@ -88,6 +88,30 @@ function renderArticleNode(node: Node, post: Post): ReactNode {
   const element = node as HTMLElement;
   const tagName = element.tagName.toLowerCase();
 
+  if (element.hasAttribute("data-gallery-widget")) {
+    const url = getSafeWebUrl(element.dataset.galleryUrl);
+    if (!url) return null;
+    const imageUrl = getSafeWebUrl(element.dataset.galleryImage);
+    const title = element.dataset.galleryTitle || element.dataset.gallerySite || url;
+    const description = element.dataset.galleryDescription;
+    const siteName = element.dataset.gallerySite;
+    return (
+      <a
+        className="article-gallery-widget"
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        {imageUrl && <img src={imageUrl} alt="" loading="lazy" />}
+        <span className="article-gallery-widget-copy">
+          <strong>{title}</strong>
+          {description && <small>{description}</small>}
+          {siteName && <small>{siteName}</small>}
+        </span>
+      </a>
+    );
+  }
+
   if (element.hasAttribute("data-html-embed")) {
     const html = element.getAttribute("data-html") ?? "";
     return (
@@ -156,6 +180,18 @@ function renderArticleNode(node: Node, post: Post): ReactNode {
     <Fragment key={index}>{renderArticleNode(child, post)}</Fragment>
   ));
   return createElement(tagName, props, children);
+}
+
+function getSafeWebUrl(value: string | undefined) {
+  if (!value) return null;
+  try {
+    const url = new URL(value, window.location.origin);
+    return url.protocol === "http:" || url.protocol === "https:"
+      ? url.href
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 function ArticleContent({ post }: { post: Post }) {

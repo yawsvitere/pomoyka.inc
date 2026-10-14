@@ -14,6 +14,8 @@ import { Node, mergeAttributes } from "@tiptap/core";
 import { DOMSerializer, Fragment } from "@tiptap/pm/model";
 import { TextSelection } from "@tiptap/pm/state";
 import { sanitizeEmbedHtml } from "../../utils/safeHtml";
+import * as filesApi from "../../api/files";
+import type { FileFolder, LinkPreview } from "../../api/files";
 
 export type UploadedFile = { localId: string; file: File; url?: string };
 
@@ -171,6 +173,97 @@ function HtmlEmbedView({ node, deleteNode }: any) {
     </NodeViewWrapper>
   );
 }
+
+type GalleryWidgetAttrs = LinkPreview & { galleryId?: string | null };
+
+function getSafeWidgetUrl(value: string | null | undefined) {
+  if (!value) return null;
+  try {
+    const url = new URL(value, window.location.origin);
+    return url.protocol === "http:" || url.protocol === "https:"
+      ? url.href
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function GalleryWidgetView({ node, deleteNode }: any) {
+  const { url, title, description, imageUrl, siteName } = node.attrs as GalleryWidgetAttrs;
+  const safeUrl = getSafeWidgetUrl(url);
+  const safeImageUrl = getSafeWidgetUrl(imageUrl);
+  return (
+    <NodeViewWrapper className="rte-gallery-widget">
+      {safeUrl && (
+        <a href={safeUrl} target="_blank" rel="noopener noreferrer">
+          {safeImageUrl && <img src={safeImageUrl} alt="" />}
+          <span className="rte-gallery-widget-copy">
+            <strong>{title || siteName || safeUrl}</strong>
+            {description && <small>{description}</small>}
+            <small>{siteName || safeUrl}</small>
+          </span>
+        </a>
+      )}
+      <button
+        type="button"
+        className="rte-embed-remove"
+        onClick={() => deleteNode()}
+      >
+        Удалить галерею
+      </button>
+    </NodeViewWrapper>
+  );
+}
+
+const GalleryWidgetNode = Node.create({
+  name: "galleryWidget",
+  group: "block",
+  atom: true,
+  draggable: true,
+  addAttributes() {
+    return {
+      url: { default: "" },
+      title: { default: "" },
+      description: { default: "" },
+      imageUrl: { default: null },
+      siteName: { default: "" },
+      galleryId: { default: null },
+    };
+  },
+  parseHTML() {
+    return [{
+      tag: "div[data-gallery-widget]",
+      getAttrs: (element) => {
+        const node = element as HTMLElement;
+        return {
+          url: node.dataset.galleryUrl ?? "",
+          title: node.dataset.galleryTitle ?? "",
+          description: node.dataset.galleryDescription ?? "",
+          imageUrl: node.dataset.galleryImage ?? null,
+          siteName: node.dataset.gallerySite ?? "",
+          galleryId: node.dataset.galleryId ?? null,
+        };
+      },
+    }];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return [
+      "div",
+      mergeAttributes({
+        "data-gallery-widget": "",
+        "data-gallery-url": HTMLAttributes.url,
+        "data-gallery-title": HTMLAttributes.title,
+        "data-gallery-description": HTMLAttributes.description,
+        "data-gallery-image": HTMLAttributes.imageUrl,
+        "data-gallery-site": HTMLAttributes.siteName,
+        "data-gallery-id": HTMLAttributes.galleryId,
+      }),
+    ];
+  },
+  addNodeView() {
+    return ReactNodeViewRenderer(GalleryWidgetView);
+  },
+});
 
 const HtmlEmbedNode = Node.create({
   name: "htmlEmbed",
@@ -361,10 +454,12 @@ function SelectionContextMenu({
   editor,
   canvasRef,
   onAddEmbed,
+  onAddGallery,
 }: {
   editor: Editor;
   canvasRef: React.RefObject<HTMLDivElement | null>;
   onAddEmbed: () => void;
+  onAddGallery: (insert: (attrs: GalleryWidgetAttrs) => void) => void;
 }) {
   const [menu, setMenu] = useState<MenuState>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -747,6 +842,38 @@ function SelectionContextMenu({
         }
       />
       <MenuItem
+        label="Добавить галерею"
+        onSelect={() => {
+          onAddGallery((attrs) => {
+            const selection = selectionRef.current;
+            if (!selection) return;
+            editor
+              .chain()
+              .focus()
+              .setTextSelection(selection)
+              .insertContent({ type: "galleryWidget", attrs })
+              .run();
+          });
+          setMenu(null);
+        }}
+        icon={
+          <svg
+            viewBox="0 0 24 24"
+            width="15"
+            height="15"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <rect x="3" y="4" width="18" height="16" rx="2" />
+            <circle cx="8.5" cy="10" r="1.5" />
+            <path d="m21 15-5-5L5 20" />
+          </svg>
+        }
+      />
+      <MenuItem
         label="HTML-виджет"
         onSelect={() => {
           onAddEmbed();
@@ -758,7 +885,213 @@ function SelectionContextMenu({
   );
 }
 
+function getRequestErrorMessage(error: unknown, fallback: string) {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "response" in error &&
+    typeof error.response === "object" &&
+    error.response !== null &&
+    "data" in error.response &&
+    typeof error.response.data === "object" &&
+    error.response.data !== null &&
+    "message" in error.response.data &&
+    typeof error.response.data.message === "string"
+  )
+    return error.response.data.message;
+  return fallback;
+}
 
+function GalleryPicker({
+  onClose,
+  onInsert,
+}: {
+  onClose: () => void;
+  onInsert: (attrs: GalleryWidgetAttrs) => void;
+}) {
+  const [folders, setFolders] = useState<FileFolder[]>([]);
+  const [isLoadingFolders, setIsLoadingFolders] = useState(true);
+  const [folderError, setFolderError] = useState("");
+  const [url, setUrl] = useState("");
+  const [preview, setPreview] = useState<GalleryWidgetAttrs | null>(null);
+  const [isLoadingPreview, setIsLoadingPreview] = useState(false);
+  const [previewError, setPreviewError] = useState("");
+
+  useEffect(() => {
+    let isCurrent = true;
+    void filesApi
+      .getLibrary()
+      .then((library) => {
+        if (isCurrent)
+          setFolders(library.folders);
+      })
+      .catch(() => {
+        if (isCurrent) setFolderError("Не удалось загрузить ваши галереи");
+      })
+      .finally(() => {
+        if (isCurrent) setIsLoadingFolders(false);
+      });
+    return () => {
+      isCurrent = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
+  function insertFolder(folder: FileFolder) {
+    const galleryUrl = `${window.location.origin}/files/gallery/${folder.id}`;
+    onInsert({
+      url: galleryUrl,
+      title: `Коллекция «${folder.name}»`,
+      description: `Фото из коллекции «${folder.name}» на Помойка.inc.`,
+      imageUrl: `${window.location.origin}/gallery-og/${folder.id}.png`,
+      siteName: "Помойка.inc",
+      galleryId: folder.id,
+    });
+  }
+
+  async function loadPreview() {
+    setPreviewError("");
+    setPreview(null);
+    let target: URL;
+    try {
+      target = new URL(url.trim(), window.location.origin);
+    } catch {
+      setPreviewError("Укажите корректную ссылку");
+      return;
+    }
+    if (!["http:", "https:"].includes(target.protocol) || target.username || target.password) {
+      setPreviewError("Поддерживаются только ссылки http:// и https://");
+      return;
+    }
+
+    setIsLoadingPreview(true);
+    try {
+      const ownGallery = target.pathname.match(
+        /^\/files\/gallery\/([0-9a-f-]{36})\/?$/i,
+      );
+      if (target.origin === window.location.origin && ownGallery) {
+        const gallery = await filesApi.getGallery(ownGallery[1]);
+        if (gallery.accessLevel !== 2) {
+          setPreviewError("Сделайте галерею публичной, чтобы вставить её в статью");
+          return;
+        }
+        const galleryTitle = `Коллекция «${gallery.name}»`;
+        setPreview({
+          url: target.href,
+          title: galleryTitle,
+          description: `Фото из коллекции «${gallery.name}» на Помойка.inc.`,
+          imageUrl: `${window.location.origin}/gallery-og/${ownGallery[1]}.png`,
+          siteName: "Помойка.inc",
+          galleryId: ownGallery[1],
+        });
+      } else {
+        setPreview(await filesApi.getLinkPreview(target.href));
+      }
+    } catch (error) {
+      setPreviewError(
+        getRequestErrorMessage(error, "Не удалось получить превью ссылки"),
+      );
+    } finally {
+      setIsLoadingPreview(false);
+    }
+  }
+
+  return (
+    <div
+      className="rte-gallery-dialog-backdrop"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <section
+        className="rte-gallery-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="rte-gallery-dialog-title"
+      >
+        <div className="rte-gallery-dialog-header">
+          <h2 id="rte-gallery-dialog-title">Добавить галерею</h2>
+          <button type="button" onClick={onClose} aria-label="Закрыть">
+            ×
+          </button>
+        </div>
+        <p className="rte-gallery-dialog-caption">
+          Выберите свою публичную галерею или вставьте ссылку — превью создастся по OG-метаданным.
+        </p>
+        <div className="rte-gallery-picker-list">
+          {isLoadingFolders ? (
+            <p>Загружаем галереи...</p>
+          ) : folderError ? (
+            <p className="rte-gallery-picker-error">{folderError}</p>
+          ) : folders.some((folder) => folder.accessLevel === 2) ? (
+            folders.filter((folder) => folder.accessLevel === 2).map((folder) => (
+              <button
+                className="rte-gallery-picker-item"
+                key={folder.id}
+                type="button"
+                onClick={() => insertFolder(folder)}
+              >
+                <span className="rte-gallery-picker-icon" aria-hidden="true">▧</span>
+                <span>
+                  <strong>{folder.name}</strong>
+                  <small>{folder.fileCount} файлов · публичная</small>
+                </span>
+              </button>
+            ))
+          ) : (
+            <p>Публичных галерей пока нет. Изменить доступ можно в разделе «Файлы».</p>
+          )}
+        </div>
+        <form
+          className="rte-gallery-link-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void loadPreview();
+          }}
+        >
+          <label htmlFor="rte-gallery-link">Или добавить по ссылке</label>
+          <div className="rte-gallery-link-row">
+            <input
+              id="rte-gallery-link"
+              type="url"
+              value={url}
+              onChange={(event) => setUrl(event.target.value)}
+              placeholder="https://example.com/gallery"
+              required
+            />
+            <button type="submit" disabled={isLoadingPreview}>
+              {isLoadingPreview ? "Загрузка..." : "Превью"}
+            </button>
+          </div>
+        </form>
+        {previewError && <p className="rte-gallery-picker-error">{previewError}</p>}
+        {preview && (
+          <div className="rte-gallery-preview">
+            <a href={preview.url} target="_blank" rel="noreferrer">
+              {preview.imageUrl && <img src={preview.imageUrl} alt="" />}
+              <span>
+                <strong>{preview.title || preview.siteName || preview.url}</strong>
+                {preview.description && <small>{preview.description}</small>}
+                <small>{preview.siteName || preview.url}</small>
+              </span>
+            </a>
+            <button type="button" onClick={() => onInsert(preview)}>
+              Вставить в статью
+            </button>
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
 
 export function RichEditor({
   onReady,
@@ -770,6 +1103,13 @@ export function RichEditor({
   const [, forceRerender] = useState(0);
   const canvasRef = useRef<HTMLDivElement>(null);
   const editorInstance = useRef<Editor | null>(null);
+  const galleryInsertRef = useRef<((attrs: GalleryWidgetAttrs) => void) | null>(null);
+  const [isGalleryPickerOpen, setIsGalleryPickerOpen] = useState(false);
+
+  const closeGalleryPicker = useCallback(() => {
+    setIsGalleryPickerOpen(false);
+    galleryInsertRef.current = null;
+  }, []);
 
   const editor = useEditor({
     extensions: [
@@ -786,6 +1126,7 @@ export function RichEditor({
       }),
       AttachmentNode,
       HtmlEmbedNode,
+      GalleryWidgetNode,
     ],
     content: initialContent,
     editorProps: {
@@ -841,6 +1182,10 @@ export function RichEditor({
       <SelectionContextMenu
         editor={editor}
         canvasRef={canvasRef}
+        onAddGallery={(insert) => {
+          galleryInsertRef.current = insert;
+          setIsGalleryPickerOpen(true);
+        }}
         onAddEmbed={() => {
           const html = window.prompt(
             "Вставьте HTML-код виджета (поддерживается Spotify iframe)",
@@ -854,6 +1199,15 @@ export function RichEditor({
               .run();
         }}
       />
+      {isGalleryPickerOpen && (
+        <GalleryPicker
+          onClose={closeGalleryPicker}
+          onInsert={(attrs) => {
+            galleryInsertRef.current?.(attrs);
+            closeGalleryPicker();
+          }}
+        />
+      )}
     </div>
   );
 }
