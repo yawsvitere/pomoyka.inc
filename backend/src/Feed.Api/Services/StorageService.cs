@@ -22,7 +22,9 @@ public interface IStorageService
     Task<string> UploadDeduplicatedObjectAsync(Stream content, string contentType);
     string GetPreviewObjectKey(string objectKey);
     string GetVideoPreviewObjectKey(string objectKey);
-    Task<GetObjectResponse> GetObjectAsync(string objectKey);
+    Task<GetObjectResponse> GetObjectAsync(
+        string objectKey,
+        CancellationToken cancellationToken = default);
     Task<GetObjectMetadataResponse> GetObjectMetadataAsync(string objectKey);
     Task<IReadOnlyList<string>> ListObjectKeysAsync(string prefix);
 }
@@ -292,8 +294,10 @@ public class StorageService : IStorageService
         return objectKey;
     }
 
-    public Task<GetObjectResponse> GetObjectAsync(string objectKey) =>
-        _s3.GetObjectAsync(_bucket, objectKey);
+    public Task<GetObjectResponse> GetObjectAsync(
+        string objectKey,
+        CancellationToken cancellationToken = default) =>
+        _s3.GetObjectAsync(_bucket, objectKey, cancellationToken);
 
     public Task<GetObjectMetadataResponse> GetObjectMetadataAsync(string objectKey) =>
         _s3.GetObjectMetadataAsync(_bucket, objectKey);

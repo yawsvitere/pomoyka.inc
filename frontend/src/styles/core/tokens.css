@@ -28,6 +28,8 @@
 
   /* Status */
   --color-danger: #ff9b9b;
+  --color-danger-strong: #e53935;
+  --color-danger-strong-hover: #c62828;
   --color-danger-bg: #3a2020;
   --color-danger-border: #5a3030;
   --color-success: #8fd19e;

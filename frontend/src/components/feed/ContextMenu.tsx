@@ -26,6 +26,7 @@ export interface ContextMenuAction {
   href?: string;
   disabled?: boolean;
   danger?: boolean;
+  className?: string;
 }
 
 interface ContextMenuProps {
@@ -408,7 +409,7 @@ export function ContextMenu({
                         type="button"
                         className={`context-menu__item${
                           action.danger ? " context-menu__item--danger" : ""
-                        }`}
+                        }${action.className ? ` ${action.className}` : ""}`}
                         disabled={action.disabled}
                         onClick={() =>
                           run(async () => {

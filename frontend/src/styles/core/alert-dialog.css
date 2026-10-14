@@ -49,6 +49,31 @@ body.alert-dialog-open {
   margin-top: 24px;
 }
 
+.alert-dialog__confirm {
+  background: #fff;
+  color: var(--color-danger-strong);
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
+}
+
+.alert-dialog__confirm:hover:not(:disabled) {
+  background: var(--color-danger-strong-hover);
+  color: #fff;
+}
+
+.alert-dialog__confirm img {
+  width: 15px;
+  height: 15px;
+  filter: brightness(0);
+  transition: filter 120ms ease;
+}
+
+.alert-dialog__confirm:hover:not(:disabled) img {
+  filter: brightness(0) invert(1);
+}
+
 @keyframes alert-dialog-fade-in {
   from {
     opacity: 0;

@@ -12,6 +12,7 @@ import downloadIcon from "../assets/icons/download.svg";
 import filterIcon from "../assets/icons/filter.svg";
 import folderIcon from "../assets/icons/folder.svg";
 import searchIcon from "../assets/icons/search.svg";
+import { getBrowserFileUrl } from "../utils/fileUrl";
 import "react-photo-view/dist/react-photo-view.css";
 import "../styles/pages/file-manager.css";
 
@@ -44,6 +45,38 @@ function fileInitials(name: string) {
   return base.slice(0, 2).toUpperCase();
 }
 
+type FileKind = "image" | "video" | "audio" | "other";
+
+function fileKind(file: filesApi.UserFile): FileKind {
+  if (isImage(file)) return "image";
+  if (isVideo(file)) return "video";
+  if (isAudio(file)) return "audio";
+  return "other";
+}
+
+async function runLimited<T>(
+  items: T[],
+  limit: number,
+  task: (item: T) => Promise<unknown>,
+) {
+  let next = 0;
+  let failed = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const item = items[next++];
+      try {
+        await task(item);
+      } catch {
+        failed += 1;
+      }
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, worker),
+  );
+  return failed;
+}
+
 function InlineRenameInput({
   value,
   onChange,
@@ -72,10 +105,30 @@ function InlineRenameInput({
 function EmptyFilesState({
   onUpload,
   readOnly = false,
+  filtered = false,
+  onReset,
 }: {
   onUpload: () => void;
   readOnly?: boolean;
+  filtered?: boolean;
+  onReset?: () => void;
 }) {
+  if (filtered) {
+    return (
+      <div className="fm-empty-state">
+        <div className="fm-empty-state-icon">
+          <img src={searchIcon} alt="" />
+        </div>
+        <strong>Ничего не найдено</strong>
+        <p>Попробуйте изменить запрос или сбросить фильтр.</p>
+        <div className="fm-empty-state-actions">
+          <button type="button" className="btn btn-secondary" onClick={onReset}>
+            Сбросить
+          </button>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="fm-empty-state">
       <div className="fm-empty-state-icon">
@@ -226,6 +279,26 @@ const fileFilterLabels: Record<FileFilter, string> = {
   other: "Другое",
 };
 
+const accessOptions: {
+  level: filesApi.FileAccessLevel;
+  label: string;
+  hint: string;
+}[] = [
+  { level: 2, label: "Публичный", hint: "Доступен всем" },
+  { level: 1, label: "Братва", hint: "Только авторизованным" },
+  { level: 0, label: "Приватный", hint: "Только вам" },
+];
+
+type SortKey = "name" | "size" | "date";
+type SortDir = "asc" | "desc";
+
+const kindLabels: Record<FileKind, string> = {
+  image: "Фото",
+  video: "Видео",
+  audio: "Аудио",
+  other: "Другое",
+};
+
 export function FileManagerPage({ shared = false }: { shared?: boolean }) {
   const { notify } = useToast();
   const [library, setLibrary] = useState<filesApi.Library>({
@@ -240,6 +313,7 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
   const [folderName, setFolderName] = useState("");
   const [fileFilter, setFileFilter] = useState<FileFilter>("all");
   const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
+  const [isAccessMenuOpen, setIsAccessMenuOpen] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [page, setPage] = useState(1);
   const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
@@ -258,7 +332,12 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
     percent: number;
   } | null>(null);
   const uploadRef = useRef<HTMLInputElement>(null);
+  const lastSelectedRef = useRef<string | null>(null);
   const filterMenuRef = useRef<HTMLDivElement>(null);
+  const accessMenuRef = useRef<HTMLDivElement>(null);
+  const [sortKey, setSortKey] = useState<SortKey | null>(null);
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
+  const [isBulkBusy, setIsBulkBusy] = useState(false);
 
   useEffect(() => {
     return () => {
@@ -292,34 +371,58 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
       )
     : 0;
 
-  const filteredFiles = useMemo(
-    () =>
-      library.files
-        .filter((file) =>
-          folderId ? file.folderId === folderId : !file.folderId,
-        )
-        .filter((file) =>
-          file.fileName.toLowerCase().includes(search.toLowerCase()),
-        )
-        .filter((file) => {
-          if (fileFilter === "all") return true;
-          if (fileFilter === "image") return isImage(file);
-          if (fileFilter === "video") return isVideo(file);
-          if (fileFilter === "audio") return isAudio(file);
-          return !isImage(file) && !isVideo(file) && !isAudio(file);
-        }),
-    [fileFilter, folderId, library.files, search],
-  );
+  const scopedFiles = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return library.files.filter(
+      (file) =>
+        (folderId ? file.folderId === folderId : !file.folderId) &&
+        file.fileName.toLowerCase().includes(query),
+    );
+  }, [folderId, library.files, search]);
 
-  const filteredFolders = useMemo(
-    () =>
-      folderId
-        ? []
-        : library.folders.filter((item) =>
-            item.name.toLowerCase().includes(search.toLowerCase()),
-          ),
-    [folderId, library.folders, search],
-  );
+  const filteredFiles = useMemo(() => {
+    const list =
+      fileFilter === "all"
+        ? scopedFiles
+        : scopedFiles.filter((file) => fileKind(file) === fileFilter);
+    if (!sortKey) return list;
+    const dir = sortDir === "asc" ? 1 : -1;
+    return [...list].sort((a, b) => {
+      if (sortKey === "size") return (a.sizeBytes - b.sizeBytes) * dir;
+      if (sortKey === "date") {
+        return (
+          (new Date(a.uploadedAt).getTime() -
+            new Date(b.uploadedAt).getTime()) *
+          dir
+        );
+      }
+      return (
+        a.fileName.localeCompare(b.fileName, "ru", {
+          numeric: true,
+          sensitivity: "base",
+        }) * dir
+      );
+    });
+  }, [fileFilter, scopedFiles, sortDir, sortKey]);
+
+  const filteredFolders = useMemo(() => {
+    if (folderId) return [];
+    const query = search.trim().toLowerCase();
+    const list = library.folders.filter((item) =>
+      item.name.toLowerCase().includes(query),
+    );
+    if (!sortKey || sortKey === "size") return list;
+    const dir = sortDir === "asc" ? 1 : -1;
+    return [...list].sort((a, b) =>
+      sortKey === "date"
+        ? (new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()) *
+          dir
+        : a.name.localeCompare(b.name, "ru", {
+            numeric: true,
+            sensitivity: "base",
+          }) * dir,
+    );
+  }, [folderId, library.folders, search, sortDir, sortKey]);
 
   const visibleItems = useMemo(
     () => [
@@ -335,17 +438,102 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
     [visibleItems, page],
   );
 
-  const visibleFiles = visibleItemsPage
-    .filter(
-      (entry): entry is { type: "file"; item: filesApi.UserFile } =>
-        entry.type === "file",
-    )
-    .map((entry) => entry.item);
+  const allFileIds = useMemo(
+    () => filteredFiles.map((file) => file.id),
+    [filteredFiles],
+  );
+  const selectedInScope = useMemo(
+    () => allFileIds.reduce((n, id) => n + (selected.has(id) ? 1 : 0), 0),
+    [allFileIds, selected],
+  );
+  const allSelected =
+    allFileIds.length > 0 && selectedInScope === allFileIds.length;
+  const someSelected = selectedInScope > 0 && !allSelected;
+  const isFiltered = search.trim() !== "" || fileFilter !== "all";
+
+  const quotaTotal = quota ? Math.max(quota.quotaBytes, 1) : 1;
+  const quotaUsed = quota?.usedBytes ?? 0;
+  const quotaFree = Math.max(0, quotaTotal - quotaUsed);
+  const quotaTone =
+    quotaPercent >= 95 ? " is-danger" : quotaPercent >= 80 ? " is-warning" : "";
+  const storageSegments = useMemo(() => {
+    const sums: Record<FileKind, number> = {
+      image: 0,
+      video: 0,
+      audio: 0,
+      other: 0,
+    };
+    for (const file of library.files) sums[fileKind(file)] += file.sizeBytes;
+    const total = Object.values(sums).reduce((a, b) => a + b, 0);
+    const scale = total > quotaTotal ? quotaTotal / total : 1;
+    return (Object.keys(sums) as FileKind[])
+      .map((kind) => ({
+        kind,
+        bytes: sums[kind],
+        percent: (sums[kind] * scale * 100) / quotaTotal,
+      }))
+      .filter((segment) => segment.bytes > 0);
+  }, [library.files, quotaTotal]);
 
   useEffect(() => {
     setPage(1);
     setSelected(new Set());
-  }, [folderId, search]);
+    lastSelectedRef.current = null;
+  }, [folderId, search, fileFilter]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [sortKey, sortDir]);
+
+  useEffect(() => {
+    setSelected((current) => {
+      if (current.size === 0) return current;
+      const existing = new Set(library.files.map((file) => file.id));
+      const next = new Set([...current].filter((id) => existing.has(id)));
+      return next.size === current.size ? current : next;
+    });
+  }, [library.files]);
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      const target = event.target as HTMLElement | null;
+      const typing =
+        !!target &&
+        ((target.tagName === "INPUT" &&
+          (target as HTMLInputElement).type !== "checkbox") ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable);
+      if (
+        typing ||
+        pendingDelete ||
+        folderDialog ||
+        renameTarget ||
+        uploadProgress
+      )
+        return;
+      if (event.key === "Escape" && selected.size > 0) {
+        setSelected(new Set());
+        lastSelectedRef.current = null;
+      }
+      if (
+        (event.ctrlKey || event.metaKey) &&
+        event.key.toLowerCase() === "a" &&
+        allFileIds.length > 0
+      ) {
+        event.preventDefault();
+        setSelected(new Set(allFileIds));
+      }
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [
+    allFileIds,
+    folderDialog,
+    pendingDelete,
+    renameTarget,
+    selected.size,
+    uploadProgress,
+  ]);
 
   async function upload(files: FileList | File[]) {
     const uploadFiles = Array.from(files);
@@ -477,6 +665,19 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
     return () => document.removeEventListener("pointerdown", handlePointerDown);
   }, [isFilterMenuOpen]);
 
+  useEffect(() => {
+    if (!isAccessMenuOpen) return;
+
+    function handlePointerDown(event: PointerEvent) {
+      if (!accessMenuRef.current?.contains(event.target as Node)) {
+        setIsAccessMenuOpen(false);
+      }
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [isAccessMenuOpen]);
+
   async function createFolder() {
     if (!folderName.trim()) return;
     try {
@@ -507,14 +708,6 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
           item.id === file.id ? updated : item,
         ),
       }));
-      notify(
-        "success",
-        accessLevel === 2
-          ? "Файл доступен всем"
-          : accessLevel === 1
-            ? "Файл доступен по ссылке"
-            : "Доступ к файлу ограничен",
-      );
     } catch (reason: any) {
       notify(
         "error",
@@ -539,14 +732,6 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
             : folderItem,
         ),
       }));
-      notify(
-        "success",
-        accessLevel === 2
-          ? "Папка доступна всем"
-          : accessLevel === 1
-            ? "Папка доступна по ссылке"
-            : "Доступ к папке ограничен",
-      );
     } catch (reason: any) {
       notify(
         "error",
@@ -568,6 +753,18 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
       });
     } catch {
       notify("error", "Не удалось открыть файл");
+    }
+  }
+  async function downloadFile(file: filesApi.UserFile) {
+    try {
+      const url = await filesApi.getAuthenticatedFileUrl(file.downloadUrl);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = file.fileName;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch {
+      notify("error", "Не удалось скачать файл");
     }
   }
   async function copyShareUrl(url: string) {
@@ -636,7 +833,19 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
       } else if (action.type === "file") {
         await filesApi.deleteFile(action.item.id);
       } else {
-        await Promise.all(action.ids.map((id) => filesApi.deleteFile(id)));
+        setIsBulkBusy(true);
+        const failed = await runLimited(action.ids, 6, (id) =>
+          filesApi.deleteFile(id),
+        );
+        setIsBulkBusy(false);
+        if (failed > 0) {
+          await reload();
+          notify(
+            "error",
+            `Не удалось удалить файлов: ${failed} из ${action.ids.length}`,
+          );
+          return;
+        }
         setSelected(new Set());
       }
       if (await reload()) {
@@ -660,23 +869,92 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
     }
   }
   async function bulkSetVisibility(accessLevel: filesApi.FileAccessLevel) {
-    try {
-      await Promise.all(
-        [...selected].map((id) => filesApi.setFileVisibility(id, accessLevel)),
-      );
-      setSelected(new Set());
-      if (await reload()) notify("success", "Доступ обновлён");
-    } catch (reason: any) {
+    if (isBulkBusy || selected.size === 0) return;
+    const ids = [...selected];
+    setIsBulkBusy(true);
+    const failed = await runLimited(ids, 6, (id) =>
+      filesApi.setFileVisibility(id, accessLevel),
+    );
+    await reload();
+    setIsBulkBusy(false);
+    if (failed === 0) {
+      clearSelection();
+    } else {
       notify(
         "error",
-        reason?.response?.data?.message ?? "Не удалось изменить доступ",
+        `Не удалось изменить доступ у файлов: ${failed} из ${ids.length}`,
       );
+    }
+  }
+  function bulkDownload() {
+    if (isBulkBusy) return;
+    const selectedFiles = library.files.filter((file) => selected.has(file.id));
+    for (const file of selectedFiles) {
+      const link = document.createElement("a");
+      link.href = getBrowserFileUrl(file.downloadUrl);
+      link.download = file.fileName;
+      link.rel = "noreferrer";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    }
+  }
+  async function bulkDownloadArchive() {
+    if (isBulkBusy || selected.size === 0) return;
+    setIsBulkBusy(true);
+    try {
+      const blob = await filesApi.downloadFilesArchive(
+        allFileIds.filter((id) => selected.has(id)),
+      );
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `files-${new Date().toISOString().slice(0, 10)}.7z`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch {
+      notify("error", "Не удалось скачать архив");
+    } finally {
+      setIsBulkBusy(false);
+    }
+  }
+  async function downloadFolderArchive(item: filesApi.FileFolder) {
+    if (isBulkBusy) return;
+    setIsBulkBusy(true);
+    try {
+      const blob = await filesApi.downloadFolderArchive(item.id);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${item.name}.7z`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch {
+      notify("error", "Не удалось скачать архив папки");
+    } finally {
+      setIsBulkBusy(false);
     }
   }
   function bulkDelete() {
     setPendingDelete({ type: "files", ids: [...selected] });
   }
 
+  function clearSelection() {
+    setIsAccessMenuOpen(false);
+    setSelected(new Set());
+    lastSelectedRef.current = null;
+  }
+  function selectAllFiles() {
+    setSelected(new Set(allFileIds));
+  }
+  function toggleSelectAll() {
+    if (allSelected) clearSelection();
+    else selectAllFiles();
+  }
   function toggleSelected(id: string) {
     setSelected((current) => {
       const next = new Set(current);
@@ -685,14 +963,71 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
       return next;
     });
   }
-  function toggleSelectAll() {
-    setSelected((current) =>
-      visibleFiles.length > 0 &&
-      visibleFiles.every((file) => current.has(file.id))
-        ? new Set()
-        : new Set(visibleFiles.map((f) => f.id)),
-    );
+
+  function handleRowCheck(
+    event: React.MouseEvent<HTMLInputElement>,
+    id: string,
+  ) {
+    const checked = event.currentTarget.checked;
+    const anchor = lastSelectedRef.current;
+    if (event.shiftKey && anchor && anchor !== id) {
+      const a = allFileIds.indexOf(anchor);
+      const b = allFileIds.indexOf(id);
+      if (a !== -1 && b !== -1) {
+        const [from, to] = a < b ? [a, b] : [b, a];
+        setSelected((current) => {
+          const next = new Set(current);
+          for (const rangeId of allFileIds.slice(from, to + 1)) {
+            if (checked) next.add(rangeId);
+            else next.delete(rangeId);
+          }
+          return next;
+        });
+        lastSelectedRef.current = id;
+        return;
+      }
+    }
+    toggleSelected(id);
+    lastSelectedRef.current = id;
   }
+
+  function toggleSort(key: SortKey) {
+    if (sortKey !== key) {
+      setSortKey(key);
+      setSortDir(key === "name" ? "asc" : "desc");
+    } else if (sortDir === "desc" && key !== "name") {
+      setSortDir("asc");
+    } else if (sortDir === "asc" && key === "name") {
+      setSortDir("desc");
+    } else {
+      setSortKey(null);
+    }
+  }
+  const sortHead = (key: SortKey, label: string) => (
+    <button
+      type="button"
+      className={`fm-sort-btn${sortKey === key ? " is-active" : ""}`}
+      onClick={() => toggleSort(key)}
+      aria-label={`Сортировать: ${label}`}
+    >
+      {label}
+      <span className="fm-sort-arrow" aria-hidden="true">
+        {sortKey === key ? (sortDir === "asc" ? "↑" : "↓") : ""}
+      </span>
+    </button>
+  );
+
+  const emptyState = (
+    <EmptyFilesState
+      onUpload={() => uploadRef.current?.click()}
+      readOnly={shared}
+      filtered={isFiltered}
+      onReset={() => {
+        setSearch("");
+        setFileFilter("all");
+      }}
+    />
+  );
 
   return (
     <div className="fm-page">
@@ -742,106 +1077,204 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
           />
 
           {!shared && (
-            <section
-              className={`fm-quota${quotaPercent >= 90 ? " is-warning" : ""}`}
-            >
-              <div
-                className="fm-quota-ring"
-                style={
-                  {
-                    "--fm-quota-percent": `${quotaPercent}%`,
-                  } as React.CSSProperties
-                }
-                aria-label={`Использовано ${quotaPercent}% квоты`}
-              >
-                <span>{quotaPercent}%</span>
-              </div>
-              <div className="fm-quota-copy">
-                <strong>Хранилище</strong>
-                <span>
-                  {quota
-                    ? `${formatSize(quota.usedBytes)} из ${formatSize(quota.quotaBytes)}`
-                    : "Загрузка квоты..."}
+            <section className={`fm-storage${quotaTone}`}>
+              <div className="fm-storage-head">
+                <div className="fm-storage-title">
+                  <strong>Хранилище</strong>
+                  <span>
+                    {quota
+                      ? `${formatSize(quotaUsed)} из ${formatSize(quota.quotaBytes)}`
+                      : "Загрузка..."}
+                  </span>
+                </div>
+                <span className="fm-storage-percent">
+                  {quota ? `${quotaPercent}%` : ""}
                 </span>
               </div>
-              <span className="fm-quota-label">использовано</span>
+              <div
+                className="fm-storage-bar"
+                role="progressbar"
+                aria-label="Использование хранилища"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={quotaPercent}
+              >
+                {storageSegments.map((segment) => (
+                  <span
+                    key={segment.kind}
+                    className={`fm-storage-seg is-${segment.kind}`}
+                    style={{ width: `${segment.percent}%` }}
+                    title={`${kindLabels[segment.kind]}: ${formatSize(segment.bytes)}`}
+                  />
+                ))}
+              </div>
+              <div className="fm-storage-legend">
+                {storageSegments.map((segment) => (
+                  <span key={segment.kind} className="fm-storage-legend-item">
+                    <i className={`fm-storage-dot is-${segment.kind}`} />
+                    {kindLabels[segment.kind]}
+                    <b>{formatSize(segment.bytes)}</b>
+                  </span>
+                ))}
+                {quota && (
+                  <span className="fm-storage-free">
+                    Свободно {formatSize(quotaFree)}
+                  </span>
+                )}
+              </div>
             </section>
           )}
 
-          {/* ---------- Toolbar: search pill / Favorited-All segment / Filters ---------- */}
-          <div className="fm-toolbar">
-            <div className="fm-search-wrap">
-              <img
-                className="fm-search-icon"
-                src={searchIcon}
-                alt=""
-                aria-hidden="true"
-              />
-              <input
-                className="fm-search"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Поиск по названию файла"
-              />
+          {selected.size === 0 && (
+            <div className="fm-toolbar">
+              <div className="fm-search-wrap">
+                <img
+                  className="fm-search-icon"
+                  src={searchIcon}
+                  alt=""
+                  aria-hidden="true"
+                />
+                <input
+                  className="fm-search"
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Поиск по названию файла"
+                />
+              </div>
+
+              <div className="fm-toolbar-spacer" />
+
+              {!shared && !folderId && (
+                <button
+                  type="button"
+                  className="btn btn-secondary fm-toolbar-btn"
+                  onClick={() => setFolderDialog(true)}
+                >
+                  Новая папка
+                </button>
+              )}
+              {!shared && (
+                <button
+                  type="button"
+                  className="btn btn-primary fm-toolbar-btn"
+                  onClick={() => uploadRef.current?.click()}
+                >
+                  Загрузить
+                </button>
+              )}
             </div>
-
-            <div className="fm-toolbar-spacer" />
-
-            {!shared && !folderId && (
-              <button
-                type="button"
-                className="btn btn-secondary fm-toolbar-btn"
-                onClick={() => setFolderDialog(true)}
-              >
-                Новая папка
-              </button>
-            )}
-            {!shared && (
-              <button
-                type="button"
-                className="btn btn-primary fm-toolbar-btn"
-                onClick={() => uploadRef.current?.click()}
-              >
-                Загрузить
-              </button>
-            )}
-          </div>
+          )}
 
           {selected.size > 0 && (
-            <div className="fm-bulk-bar">
-              <span>{selected.size} выбрано</span>
-              <div className="fm-bulk-actions">
-                <button
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => void bulkSetVisibility(2)}
-                >
-                  Сделать публичными
-                </button>
-                <button
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => void bulkSetVisibility(1)}
-                >
-                  Только авторизованным
-                </button>
-                <button
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => void bulkSetVisibility(0)}
-                >
-                  Сделать приватными
-                </button>
-                <button
-                  className="btn btn-danger btn-sm fm-bulk-danger"
-                  onClick={() => void bulkDelete()}
-                >
-                  Удалить
-                </button>
-                <button
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => setSelected(new Set())}
-                >
-                  Отмена
-                </button>
+            <div
+              className="fm-selection-bar"
+              role="toolbar"
+              aria-label="Действия с выбранными файлами"
+            >
+              <button
+                type="button"
+                className="fm-selection-close"
+                onClick={clearSelection}
+                aria-label="Снять выделение"
+                title="Снять выделение (Esc)"
+              >
+                <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                  <path
+                    d="m5 5 10 10M15 5 5 15"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </button>
+
+              <div className="fm-selection-info" aria-live="polite">
+                <strong>Выбрано: {selected.size}</strong>
+                {allFileIds.length > selected.size ? (
+                  <button
+                    type="button"
+                    className="fm-selection-link"
+                    onClick={selectAllFiles}
+                  >
+                    Выбрать все {allFileIds.length}
+                  </button>
+                ) : allFileIds.length > 1 ? (
+                  <span className="fm-selection-note">все файлы</span>
+                ) : null}
               </div>
+
+              <span className="fm-selection-divider" aria-hidden="true" />
+
+              <div className="fm-access-menu-wrap" ref={accessMenuRef}>
+                <button
+                  type="button"
+                  className={`btn btn-secondary fm-selection-access${isAccessMenuOpen ? " is-open" : ""}`}
+                  disabled={isBulkBusy}
+                  aria-haspopup="menu"
+                  aria-expanded={isAccessMenuOpen}
+                  onClick={() => setIsAccessMenuOpen((open) => !open)}
+                >
+                  Изменить доступ
+                  <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                    <path
+                      d="m5.5 8 4.5 4.5L14.5 8"
+                      stroke="currentColor"
+                      strokeWidth="1.7"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </button>
+                {isAccessMenuOpen && (
+                  <div className="fm-access-menu" role="menu">
+                    {accessOptions.map((option) => (
+                      <button
+                        key={option.level}
+                        type="button"
+                        role="menuitem"
+                        className={`fm-access-option access-${option.level}`}
+                        onClick={() => {
+                          setIsAccessMenuOpen(false);
+                          void bulkSetVisibility(option.level);
+                        }}
+                      >
+                        <i className="fm-access-dot" />
+                        <span>
+                          <strong>{option.label}</strong>
+                          <small>{option.hint}</small>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <button
+                type="button"
+                className="btn btn-secondary fm-selection-download"
+                disabled={isBulkBusy}
+                onClick={bulkDownload}
+              >
+                Скачать
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary fm-selection-download"
+                disabled={isBulkBusy}
+                onClick={() => void bulkDownloadArchive()}
+              >
+                Скачать архивом (.7z)
+              </button>
+
+              <button
+                type="button"
+                className="btn btn-danger fm-selection-delete"
+                disabled={isBulkBusy}
+                onClick={bulkDelete}
+              >
+                <img src={deleteIcon} alt="" aria-hidden="true" />
+                Удалить
+              </button>
             </div>
           )}
 
@@ -904,9 +1337,8 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
             </div>
           </div>
 
-          {/* ---------- Table: checkbox | avatar+name | cell | cell | badge | Edit ... ---------- */}
           <section
-            className={`fm-list${isDragging ? " is-dragging" : ""}`}
+            className={`fm-list${isDragging ? " is-dragging" : ""}${selected.size > 0 ? " has-selection" : ""}`}
             onDragOver={(event) => {
               if (shared) return;
               if (!event.dataTransfer.types.includes("Files")) return;
@@ -935,24 +1367,28 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
                 <span className="fm-row-check">
                   <input
                     type="checkbox"
-                    checked={
-                      visibleFiles.length > 0 &&
-                      visibleFiles.every((file) => selected.has(file.id))
+                    aria-label="Выбрать все файлы"
+                    title={
+                      allFileIds.length > 0
+                        ? `Выбрать все файлы (${allFileIds.length})`
+                        : undefined
                     }
+                    disabled={allFileIds.length === 0}
+                    checked={allSelected}
+                    ref={(el) => {
+                      if (el) el.indeterminate = someSelected;
+                    }}
                     onChange={toggleSelectAll}
                   />
                 </span>
-                <span>Имя</span>
-                <span>Размер</span>
-                <span>Загружен</span>
+                {sortHead("name", "Имя")}
+                {sortHead("size", "Размер")}
+                {sortHead("date", "Загружен")}
                 <span>Доступ</span>
                 <span />
               </div>
               {visibleItemsPage.length === 0 && !folderId ? (
-                <EmptyFilesState
-                  onUpload={() => uploadRef.current?.click()}
-                  readOnly={shared}
-                />
+                emptyState
               ) : (
                 <>
                   {folderId && (
@@ -996,12 +1432,7 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
                       <div className="fm-row-actions fm-up-actions"></div>
                     </div>
                   )}
-                  {visibleItemsPage.length === 0 && (
-                    <EmptyFilesState
-                      onUpload={() => uploadRef.current?.click()}
-                      readOnly={shared}
-                    />
-                  )}
+                  {visibleItemsPage.length === 0 && emptyState}
                   {visibleItemsPage.map((entry) => {
                     if (entry.type === "folder") {
                       const item = entry.item;
@@ -1108,18 +1539,21 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
                                 {
                                   key: "public",
                                   label: "Сделать публичным",
+                                  className: "access-2",
                                   disabled: item.accessLevel === 2,
                                   onClick: () => void setFolderAccess(item, 2),
                                 },
                                 {
                                   key: "authenticated",
                                   label: "Только авторизованным",
+                                  className: "access-1",
                                   disabled: item.accessLevel === 1,
                                   onClick: () => void setFolderAccess(item, 1),
                                 },
                                 {
                                   key: "private",
                                   label: "Сделать приватным",
+                                  className: "access-0",
                                   disabled: item.accessLevel === 0,
                                   onClick: () => void setFolderAccess(item, 0),
                                 },
@@ -1127,7 +1561,7 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
                             >
                               <button
                                 type="button"
-                                className={`btn btn-ghost fm-badge fm-visibility${item.accessLevel === 2 ? " public" : ""}`}
+                                className={`btn btn-ghost fm-badge fm-visibility access-${item.accessLevel}`}
                                 data-context-menu-trigger="true"
                                 aria-label={`Доступ папки ${item.name}`}
                               >
@@ -1159,6 +1593,18 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
                                         `${window.location.origin}/files/gallery/${item.id}`,
                                       ),
                                   },
+                                  ...(item.id !==
+                                  "00000000-0000-0000-0000-000000000000"
+                                    ? [
+                                        {
+                                          key: "download-archive",
+                                          label: "Скачать архивом (.7z)",
+                                          icon: downloadIcon,
+                                          onClick: () =>
+                                            downloadFolderArchive(item),
+                                        },
+                                      ]
+                                    : []),
                                   {
                                     key: "toggle-visibility",
                                     label:
@@ -1227,6 +1673,12 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
                                 }),
                           },
                           {
+                            key: "download",
+                            label: "Скачать",
+                            icon: downloadIcon,
+                            onClick: () => downloadFile(file),
+                          },
+                          {
                             key: "rename",
                             label: "Переименовать",
                             onClick: () =>
@@ -1273,8 +1725,12 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
                           <span className="fm-row-check">
                             <input
                               type="checkbox"
+                              aria-label={`Выбрать ${file.fileName}`}
                               checked={selected.has(file.id)}
-                              onChange={() => toggleSelected(file.id)}
+                              onClick={(event) =>
+                                handleRowCheck(event, file.id)
+                              }
+                              onChange={() => undefined}
                             />
                           </span>
 
@@ -1361,18 +1817,21 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
                               {
                                 key: "public",
                                 label: "Сделать публичным",
+                                className: "access-2",
                                 disabled: file.accessLevel === 2,
                                 onClick: () => void setFileAccess(file, 2),
                               },
                               {
                                 key: "authenticated",
                                 label: "Только авторизованным",
+                                className: "access-1",
                                 disabled: file.accessLevel === 1,
                                 onClick: () => void setFileAccess(file, 1),
                               },
                               {
                                 key: "private",
                                 label: "Сделать приватным",
+                                className: "access-0",
                                 disabled: file.accessLevel === 0,
                                 onClick: () => void setFileAccess(file, 0),
                               },
@@ -1380,7 +1839,7 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
                           >
                             <button
                               type="button"
-                              className={`btn btn-ghost fm-badge${file.accessLevel === 2 ? " public" : ""}`}
+                              className={`btn btn-ghost fm-badge access-${file.accessLevel}`}
                               data-context-menu-trigger="true"
                               aria-label={`Доступ файла ${file.fileName}`}
                             >
@@ -1401,6 +1860,12 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
                                     : {
                                         href: `${window.location.origin}/files/file/${file.id}`,
                                       }),
+                                },
+                                {
+                                  key: "download",
+                                  label: "Скачать",
+                                  icon: downloadIcon,
+                                  onClick: () => downloadFile(file),
                                 },
                                 {
                                   key: "rename",
@@ -1476,7 +1941,6 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
               )}
             </div>
 
-            {/* ---------- Footer: "Showing X-Y of Z" + numbered pagination ---------- */}
             <div className="fm-table-footer">
               <span className="fm-table-footer-text">
                 {visibleItems.length === 0

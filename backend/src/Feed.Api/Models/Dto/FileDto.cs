@@ -27,3 +27,9 @@ public class MoveFileRequest
 {
     public Guid? FolderId { get; set; }
 }
+
+public class DownloadFilesArchiveRequest
+{
+    public List<Guid>? FileIds { get; set; }
+    public Guid? FolderId { get; set; }
+}

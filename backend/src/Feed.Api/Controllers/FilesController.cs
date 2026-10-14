@@ -11,6 +11,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Net.Http.Headers;
 using Amazon.S3;
+using System.Diagnostics;
 using System.Text.Encodings.Web;
 using SixLabors.Fonts;
 using SixLabors.ImageSharp;
@@ -31,6 +32,7 @@ public class FilesController : ControllerBase
     private readonly ImagePreviewBackgroundService _imagePreviewBackgroundService;
     private readonly IHubContext<FeedHub> _feedHub;
     private readonly ILogger<FilesController> _logger;
+    private readonly string _sevenZipExecutable;
 
     private const long MaxFileSizeBytes = 500L * 1024 * 1024;
     private const long MaxAvatarSizeBytes = 5L * 1024 * 1024;
@@ -44,13 +46,15 @@ public class FilesController : ControllerBase
         IStorageService storage,
         ImagePreviewBackgroundService imagePreviewBackgroundService,
         IHubContext<FeedHub> feedHub,
-        ILogger<FilesController> logger)
+        ILogger<FilesController> logger,
+        IConfiguration configuration)
     {
         _db = db;
         _storage = storage;
         _imagePreviewBackgroundService = imagePreviewBackgroundService;
         _feedHub = feedHub;
         _logger = logger;
+        _sevenZipExecutable = configuration["SevenZip:ExecutablePath"] ?? "7z";
     }
 
     [HttpPost("presign-upload")]
@@ -685,6 +689,231 @@ public class FilesController : ControllerBase
             file.UploadedAt,
             new EntityTagHeaderValue($"\"{file.Id:N}\""),
             enableRangeProcessing: true);
+    }
+
+    [HttpPost("library/download-archive")]
+    public async Task<IActionResult> DownloadLibraryArchive(
+        [FromBody] DownloadFilesArchiveRequest request)
+    {
+        var userId = GetUserId();
+        if (userId == null) return Unauthorized();
+
+        var requestedFileIds = request.FileIds ?? new List<Guid>();
+        if (request.FolderId.HasValue && requestedFileIds.Count > 0)
+            return BadRequest(new { message = "Укажите файлы или папку, но не оба варианта" });
+
+        UserFile[] orderedFiles;
+        string? archiveRootName = null;
+        if (request.FolderId is Guid folderId)
+        {
+            var folder = await _db.FileFolders.AsNoTracking()
+                .FirstOrDefaultAsync(
+                    item => item.Id == folderId,
+                    HttpContext.RequestAborted);
+            if (folder == null || !CanAccess(folder.AccessLevel, folder.OwnerId))
+                return NotFound();
+
+            archiveRootName = GetUniqueArchiveEntryName(
+                folder.Name,
+                new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+            var folderFiles = await _db.UserFiles.AsNoTracking()
+                .Where(file => file.FolderId == folderId)
+                .OrderBy(file => file.FileName)
+                .ToArrayAsync(HttpContext.RequestAborted);
+            orderedFiles = folderFiles
+                .Where(file => CanAccess(file.AccessLevel, file.OwnerId))
+                .ToArray();
+        }
+        else
+        {
+            var fileIds = requestedFileIds.Distinct().ToArray();
+            if (fileIds.Length == 0)
+                return BadRequest(new { message = "Выберите файлы или папку для скачивания" });
+
+            var files = await _db.UserFiles.AsNoTracking()
+                .Where(file => fileIds.Contains(file.Id))
+                .ToListAsync(HttpContext.RequestAborted);
+            if (files.Count != fileIds.Length ||
+                files.Any(file => !CanAccess(file.AccessLevel, file.OwnerId)))
+                return NotFound();
+
+            var filesById = files.ToDictionary(file => file.Id);
+            orderedFiles = fileIds.Select(id => filesById[id]).ToArray();
+        }
+
+        var temporaryDirectory = Path.Combine(
+            Path.GetTempPath(),
+            "feed-api-archives",
+            Guid.NewGuid().ToString("N"));
+        var keepTemporaryDirectory = false;
+
+        try
+        {
+            Directory.CreateDirectory(temporaryDirectory);
+            var archiveContentDirectory = archiveRootName == null
+                ? temporaryDirectory
+                : Path.Combine(temporaryDirectory, archiveRootName);
+            Directory.CreateDirectory(archiveContentDirectory);
+
+            var entryNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var archiveFilePaths = new List<string>(orderedFiles.Length);
+            foreach (var file in orderedFiles)
+            {
+                var entryName = GetUniqueArchiveEntryName(file.FileName, entryNames);
+                archiveFilePaths.Add(Path.Combine(archiveContentDirectory, entryName));
+
+                var objectResponse = await _storage.GetObjectAsync(
+                    file.StorageKey,
+                    HttpContext.RequestAborted);
+                using (objectResponse)
+                await using (var output = new FileStream(
+                    Path.Combine(archiveContentDirectory, entryName),
+                    FileMode.CreateNew,
+                    FileAccess.Write,
+                    FileShare.None,
+                    81920,
+                    FileOptions.Asynchronous | FileOptions.SequentialScan))
+                {
+                    await objectResponse.ResponseStream.CopyToAsync(
+                        output,
+                        HttpContext.RequestAborted);
+                }
+            }
+
+            var archivePath = Path.Combine(temporaryDirectory, "files.7z");
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = _sevenZipExecutable,
+                WorkingDirectory = Path.GetTempPath(),
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true
+            };
+            startInfo.ArgumentList.Add("a");
+            startInfo.ArgumentList.Add("-t7z");
+            startInfo.ArgumentList.Add("-mx=5");
+            startInfo.ArgumentList.Add(archivePath);
+            startInfo.ArgumentList.Add("--");
+            if (archiveRootName != null)
+                startInfo.ArgumentList.Add(archiveContentDirectory);
+            else
+                foreach (var filePath in archiveFilePaths)
+                    startInfo.ArgumentList.Add(filePath);
+
+            using var process = Process.Start(startInfo)
+                ?? throw new InvalidOperationException("Не удалось запустить 7-Zip");
+            string standardError;
+            try
+            {
+                var standardOutputTask = process.StandardOutput.BaseStream.CopyToAsync(
+                    Stream.Null,
+                    HttpContext.RequestAborted);
+                var standardErrorTask = process.StandardError.ReadToEndAsync(
+                    HttpContext.RequestAborted);
+                await process.WaitForExitAsync(HttpContext.RequestAborted);
+                await standardOutputTask;
+                standardError = await standardErrorTask;
+            }
+            catch
+            {
+                if (!process.HasExited)
+                {
+                    try
+                    {
+                        process.Kill(entireProcessTree: true);
+                    }
+                    catch (InvalidOperationException)
+                    {
+                    }
+                }
+
+                throw;
+            }
+
+            if (process.ExitCode != 0)
+            {
+                _logger.LogError(
+                    "7-Zip failed to create a user file archive (exit code {ExitCode}): {Error}",
+                    process.ExitCode,
+                    standardError);
+                return StatusCode(500, new { message = "Не удалось создать архив" });
+            }
+
+            var archiveStream = new FileStream(
+                archivePath,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.Read,
+                81920,
+                FileOptions.Asynchronous | FileOptions.SequentialScan);
+            Response.OnCompleted(() =>
+            {
+                TryDeleteArchiveDirectory(temporaryDirectory);
+                return Task.CompletedTask;
+            });
+            keepTemporaryDirectory = true;
+            return File(
+                archiveStream,
+                "application/x-7z-compressed",
+                $"{archiveRootName ?? "files"}-{DateTime.UtcNow:yyyyMMdd-HHmmss}.7z");
+        }
+        catch (OperationCanceledException) when (HttpContext.RequestAborted.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "Failed to create a 7-Zip archive for user {UserId}", userId);
+            return StatusCode(500, new { message = "Не удалось создать архив" });
+        }
+        finally
+        {
+            if (!keepTemporaryDirectory)
+                TryDeleteArchiveDirectory(temporaryDirectory);
+        }
+    }
+
+    private static string GetUniqueArchiveEntryName(
+        string fileName,
+        HashSet<string> existingNames)
+    {
+        var leafName = Path.GetFileName(fileName.Replace('\\', '/'));
+        var invalidCharacters = Path.GetInvalidFileNameChars()
+            .Concat("<>:\"/\\|?*")
+            .ToHashSet();
+        var safeName = new string(leafName
+            .Select(character => invalidCharacters.Contains(character) ? '_' : character)
+            .ToArray())
+            .Trim()
+            .TrimEnd('.');
+        if (string.IsNullOrWhiteSpace(safeName) || safeName is "." or "..")
+            safeName = "file";
+
+        var name = safeName;
+        var extension = Path.GetExtension(safeName);
+        var nameWithoutExtension = Path.GetFileNameWithoutExtension(safeName);
+        for (var suffix = 2; !existingNames.Add(name); suffix++)
+            name = $"{nameWithoutExtension} ({suffix}){extension}";
+
+        return name;
+    }
+
+    private void TryDeleteArchiveDirectory(string directory)
+    {
+        try
+        {
+            if (Directory.Exists(directory))
+                Directory.Delete(directory, recursive: true);
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException)
+        {
+            _logger.LogWarning(
+                exception,
+                "Failed to clean up temporary archive directory {Directory}",
+                directory);
+        }
     }
 
     [HttpGet("sha256/{hash}/download")]

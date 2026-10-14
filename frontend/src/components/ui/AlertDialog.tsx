@@ -1,5 +1,6 @@
 import { useEffect, type MouseEvent } from "react";
 import { createPortal } from "react-dom";
+import deleteIcon from "../../assets/icons/delete.svg";
 import "../../styles/core/alert-dialog.css";
 
 interface AlertDialogProps {
@@ -79,7 +80,12 @@ export function AlertDialog({
           >
             {cancelLabel}
           </button>
-          <button className="btn btn-danger" type="button" onClick={onConfirm}>
+          <button
+            className="btn btn-danger alert-dialog__confirm"
+            type="button"
+            onClick={onConfirm}
+          >
+            <img src={deleteIcon} alt="" aria-hidden="true" />
             {confirmLabel}
           </button>
         </div>

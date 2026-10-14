@@ -67,6 +67,24 @@ export async function getAuthenticatedFileUrl(url: string) {
   });
   return URL.createObjectURL(response.data);
 }
+export async function downloadFilesArchive(fileIds: string[]) {
+  return (
+    await apiClient.post<Blob>(
+      "/api/files/library/download-archive",
+      { fileIds },
+      { responseType: "blob" },
+    )
+  ).data;
+}
+export async function downloadFolderArchive(folderId: string) {
+  return (
+    await apiClient.post<Blob>(
+      "/api/files/library/download-archive",
+      { folderId },
+      { responseType: "blob" },
+    )
+  ).data;
+}
 export async function createFolder(name: string, accessLevel: FileAccessLevel) {
   return (
     await apiClient.post<FileFolder>("/api/files/folders", {
