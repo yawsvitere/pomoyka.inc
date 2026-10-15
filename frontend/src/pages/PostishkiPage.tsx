@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import * as postsApi from "../api/posts";
 import type { Post } from "../api/types";
 import { ContextMenu } from "../components/feed/ContextMenu";
+import { PostishkaCoverImage } from "../components/feed/PostishkaCoverImage";
 import { Spinner } from "../components/ui/Spinner";
 import { useToast } from "../components/ui/useToast";
 import { useAuth } from "../context/AuthContext";
@@ -85,11 +86,14 @@ function PostishkiCard({
         style={{ animationDelay: `${80 + index * 35}ms` }}
       >
         <Link className="postishki-card-cover" to={getPostishkaUrl(post)}>
-          {coverUrl ? (
-            <img src={coverUrl} alt="" />
-          ) : (
-            <span className="postishki-card-no-cover">Постишки</span>
-          )}
+          <PostishkaCoverImage
+            postId={post.id}
+            hasOgCover={post.hasOgCover}
+            fallbackUrl={coverUrl}
+            placeholder={
+              <span className="postishki-card-no-cover">Постишки</span>
+            }
+          />
         </Link>
         <div className="postishki-card-content">
           <div className="postishki-card-meta">

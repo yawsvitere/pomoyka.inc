@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import type { FeedBanner, Post, PostFile } from "../../api/types";
 import { getBrowserFileUrl } from "../../utils/fileUrl";
 import { getPostishkaUrl } from "../../utils/postishkaUrl";
+import { PostishkaCoverImage } from "./PostishkaCoverImage";
 
 interface FeedSidebarProps {
   posts: Post[];
@@ -60,9 +61,15 @@ export function FeedSidebar({ posts, postishki, banners }: FeedSidebarProps) {
                 slug: banner.postSlug,
               })}
             >
-              {banner.imageUrl && (
-                <img src={getBrowserFileUrl(banner.imageUrl)} alt="" />
-              )}
+              <PostishkaCoverImage
+                postId={banner.postId}
+                hasOgCover={banner.hasOgCover}
+                fallbackUrl={
+                  banner.imageUrl
+                    ? getBrowserFileUrl(banner.imageUrl)
+                    : null
+                }
+              />
               <span className="feed-sidebar-banner-overlay">
                 <strong>{banner.title}</strong>
                 <small>{formatDate(banner.createdAt)}</small>

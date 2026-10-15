@@ -493,6 +493,9 @@ namespace Feed.Api.Migrations
                     b.Property<bool>("IsPostishka")
                         .HasColumnType("boolean");
 
+                    b.Property<string>("OgCoverStorageKey")
+                        .HasColumnType("text");
+
                     b.Property<Guid>("PomoykaId")
                         .HasColumnType("uuid")
                         .HasColumnName("PomojkaId");

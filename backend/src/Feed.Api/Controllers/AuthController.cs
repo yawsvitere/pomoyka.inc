@@ -24,6 +24,7 @@ public class AuthController : ControllerBase
     private readonly AuthAttemptLimiter _attemptLimiter;
     private readonly AppDbContext _db;
     private readonly IHubContext<FeedHub> _feedHub;
+    private readonly OgImageStorageCache _ogImageCache;
 
     public AuthController(
         UserManager<AppUser> userManager,
@@ -31,7 +32,8 @@ public class AuthController : ControllerBase
         InviteCodeService inviteCodeService,
         AuthAttemptLimiter attemptLimiter,
         AppDbContext db,
-        IHubContext<FeedHub> feedHub)
+        IHubContext<FeedHub> feedHub,
+        OgImageStorageCache ogImageCache)
     {
         _userManager = userManager;
         _jwtService = jwtService;
@@ -39,6 +41,7 @@ public class AuthController : ControllerBase
         _attemptLimiter = attemptLimiter;
         _db = db;
         _feedHub = feedHub;
+        _ogImageCache = ogImageCache;
     }
 
     [HttpPost("verify-code")]
@@ -282,11 +285,16 @@ public class AuthController : ControllerBase
 
         var user = await _userManager.FindByIdAsync(userId.Value.ToString());
         if (user == null) return NotFound();
+        var ogProfileChanged =
+            user.DisplayName != request.DisplayName.Trim() ||
+            (ValidateNicknameColor(request.NicknameColor) && user.NicknameColor != request.NicknameColor);
         user.DisplayName = request.DisplayName.Trim();
         user.NicknameColor = ValidateNicknameColor(request.NicknameColor) ? request.NicknameColor : user.NicknameColor;
         user.About = string.IsNullOrWhiteSpace(request.About) ? null : request.About.Trim();
         var result = await _userManager.UpdateAsync(user);
         if (!result.Succeeded) return BadRequest(result.Errors);
+        if (ogProfileChanged)
+            await _ogImageCache.InvalidateUserAsync(_db, user.Id);
         await _feedHub.Clients.Group("feed-global")
             .SendAsync("UserProfileChanged", user.Id, user.NicknameColor);
         return Ok(ToDto(user));

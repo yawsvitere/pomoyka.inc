@@ -33,6 +33,7 @@ export interface Post {
   text: string | null;
   title: string | null;
   description?: string | null;
+  hasOgCover?: boolean;
   slug?: string | null;
   isArticle: boolean;
   isPostishka?: boolean;
@@ -79,4 +80,5 @@ export interface FeedBanner {
   title: string;
   createdAt: string;
   imageUrl: string | null;
+  hasOgCover?: boolean;
 }

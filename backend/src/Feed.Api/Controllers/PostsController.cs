@@ -30,6 +30,7 @@ public class PostsController : ControllerBase
     private readonly ImagePreviewBackgroundService _imagePreviewBackgroundService;
     private readonly IHubContext<FeedHub> _hub;
     private readonly PomoykaService _pomoykaService;
+    private readonly OgImageStorageCache _ogImageCache;
     private readonly ILogger<PostsController> _logger;
 
     public PostsController(
@@ -38,6 +39,7 @@ public class PostsController : ControllerBase
         ImagePreviewBackgroundService imagePreviewBackgroundService,
         IHubContext<FeedHub> hub,
         PomoykaService pomoykaService,
+        OgImageStorageCache ogImageCache,
         ILogger<PostsController> logger)
     {
         _db = db;
@@ -45,6 +47,7 @@ public class PostsController : ControllerBase
         _imagePreviewBackgroundService = imagePreviewBackgroundService;
         _hub = hub;
         _pomoykaService = pomoykaService;
+        _ogImageCache = ogImageCache;
         _logger = logger;
     }
 
@@ -205,16 +208,39 @@ public class PostsController : ControllerBase
         return Content(html, "text/html; charset=utf-8");
     }
 
+    [HttpGet("{id:guid}/cover")]
+    public async Task<IActionResult> GetPostishkaCover(Guid id)
+    {
+        var coverStorageKey = await _db.Posts
+            .AsNoTracking()
+            .Where(post => post.Id == id && post.IsPostishka)
+            .Select(post => post.OgCoverStorageKey)
+            .FirstOrDefaultAsync();
+        if (string.IsNullOrWhiteSpace(coverStorageKey))
+            return NotFound();
+
+        var cover = await _storage.GetObjectAsync(coverStorageKey);
+        return File(cover.ResponseStream, cover.Headers.ContentType ?? "application/octet-stream");
+    }
+
     [AllowAnonymous]
     [HttpGet("og/{id:guid}.png")]
     public async Task<IActionResult> GetOgImage(Guid id)
     {
         var post = await QueryPost(id)
-            .Where(p => p.IsPostishka && p.AccessLevel == PostAccessLevel.Public)
+            .Where(p => p.IsPostishka)
             .FirstOrDefaultAsync();
 
-        if (post == null)
+        if (post == null ||
+            (post.AccessLevel != PostAccessLevel.Public && GetUserId() == null))
             return NotFound();
+
+        var cachedImage = await _ogImageCache.TryGetAsync(OgImageStorageCache.PostKey(id), HttpContext.RequestAborted);
+        if (cachedImage != null)
+        {
+            Response.Headers.CacheControl = "no-cache";
+            return File(cachedImage, "image/png");
+        }
 
         const int width = 1200;
         const int height = 630;
@@ -248,7 +274,7 @@ public class PostsController : ControllerBase
         using var canvas = new Image<Rgba32>(width, height);
         canvas.Mutate(context => context.Fill(Color.FromRgb(24, 24, 24)));
 
-        var backgroundKey = ResolveOgBackgroundKey(post);
+        var backgroundKey = post.OgCoverStorageKey ?? ResolveOgBackgroundKey(post);
         if (backgroundKey != null)
         {
             using var background = await TryLoadImageAsync(backgroundKey);
@@ -329,7 +355,10 @@ public class PostsController : ControllerBase
 
         await using var output = new MemoryStream();
         await canvas.SaveAsPngAsync(output);
-        return File(output.ToArray(), "image/png");
+        var imageBytes = output.ToArray();
+        await _ogImageCache.StoreAsync(OgImageStorageCache.PostKey(id), imageBytes);
+        Response.Headers.CacheControl = "no-cache";
+        return File(imageBytes, "image/png");
     }
 
     private string? ResolveOgBackgroundKey(Post post)
@@ -548,7 +577,8 @@ public class PostsController : ControllerBase
         [FromForm] string? description,
         [FromForm] string text,
         [FromForm] PostAccessLevel accessLevel,
-        [FromForm] List<IFormFile>? files)
+        [FromForm] List<IFormFile>? files,
+        [FromForm] IFormFile? ogCover)
     {
         var userId = GetUserId();
         if (userId == null) return Unauthorized();
@@ -557,6 +587,8 @@ public class PostsController : ControllerBase
 
         if (string.IsNullOrWhiteSpace(text))
             return BadRequest(new { message = "постишка должна содержать текст" });
+        if (ogCover != null && !await IsValidOgCoverAsync(ogCover))
+            return BadRequest(new { message = "Обложка должна быть изображением размером до 10 МБ" });
 
         files ??= new List<IFormFile>();
         if (files.Any(file => file.Length == 0 || file.Length > 500L * 1024 * 1024))
@@ -572,6 +604,7 @@ public class PostsController : ControllerBase
             Slug = await GetUniquePostishkaSlugAsync(title.Trim()),
             Description = string.IsNullOrWhiteSpace(description) ? null : description.Trim(),
             Text = text,
+            OgCoverStorageKey = ogCover == null ? null : await UploadOgCoverAsync(ogCover),
             IsPostishka = true,
             AccessLevel = accessLevel == PostAccessLevel.Public
                 ? PostAccessLevel.Public
@@ -720,6 +753,7 @@ public class PostsController : ControllerBase
         _db.Posts.Remove(post);
 
         await _db.SaveChangesAsync();
+        await _ogImageCache.InvalidateAsync(OgImageStorageCache.PostKey(id));
 
         await _hub.Clients
             .Group("feed-global")
@@ -736,7 +770,9 @@ public class PostsController : ControllerBase
         [FromForm] string? description,
         [FromForm] string text,
         [FromForm] PostAccessLevel accessLevel,
-        [FromForm] List<IFormFile>? files)
+        [FromForm] List<IFormFile>? files,
+        [FromForm] IFormFile? ogCover,
+        [FromForm] bool removeOgCover = false)
     {
         var userId = GetUserId();
         if (userId == null) return Unauthorized();
@@ -746,6 +782,8 @@ public class PostsController : ControllerBase
             return BadRequest(new { message = "Описание должно быть не длиннее 500 символов" });
         if (string.IsNullOrWhiteSpace(text))
             return BadRequest(new { message = "Постишка должна содержать текст" });
+        if (ogCover != null && !await IsValidOgCoverAsync(ogCover))
+            return BadRequest(new { message = "Обложка должна быть изображением размером до 10 МБ" });
 
         var post = await _db.Posts
             .Include(p => p.Files)
@@ -802,10 +840,15 @@ public class PostsController : ControllerBase
         post.Slug = await GetUniquePostishkaSlugAsync(title.Trim(), post.Id);
         post.Description = string.IsNullOrWhiteSpace(description) ? null : description.Trim();
         post.Text = updatedText;
+        if (ogCover != null)
+            post.OgCoverStorageKey = await UploadOgCoverAsync(ogCover);
+        else if (removeOgCover)
+            post.OgCoverStorageKey = null;
         post.AccessLevel = accessLevel == PostAccessLevel.Public
             ? PostAccessLevel.Public
             : PostAccessLevel.Authenticated;
         await _db.SaveChangesAsync();
+        await _ogImageCache.InvalidateAsync(OgImageStorageCache.PostKey(post.Id));
 
         foreach (var image in uploadedFiles.Where(file =>
                      file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)))
@@ -826,6 +869,37 @@ public class PostsController : ControllerBase
         }
 
         return null;
+    }
+
+    private static async Task<bool> IsValidOgCoverAsync(IFormFile file)
+    {
+        if (file.Length == 0 ||
+            file.Length > 10L * 1024 * 1024 ||
+            !file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        try
+        {
+            await using var stream = file.OpenReadStream();
+            var imageInfo = await Image.IdentifyAsync(stream);
+            return imageInfo.Width <= 12_000 &&
+                imageInfo.Height <= 12_000 &&
+                (long)imageInfo.Width * imageInfo.Height <= 40_000_000;
+        }
+        catch (UnknownImageFormatException)
+        {
+            return false;
+        }
+        catch (InvalidImageContentException)
+        {
+            return false;
+        }
+    }
+
+    private async Task<string> UploadOgCoverAsync(IFormFile file)
+    {
+        await using var stream = file.OpenReadStream();
+        return await _storage.UploadDeduplicatedObjectAsync(stream, file.ContentType);
     }
 
     private string GetPublicOrigin()
@@ -881,6 +955,7 @@ public class PostsController : ControllerBase
             Text = post.Text,
             Title = post.Title,
             Description = post.Description,
+            HasOgCover = !string.IsNullOrWhiteSpace(post.OgCoverStorageKey),
             Slug = post.Slug,
             IsArticle = !string.IsNullOrWhiteSpace(post.Title),
             IsPostishka = post.IsPostishka,

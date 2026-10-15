@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import type { Editor } from "@tiptap/react";
 import * as postsApi from "../api/posts";
 import type { Post } from "../api/types";
+import { PostishkaCoverPicker } from "../components/editor/PostishkaCoverPicker";
 import {
   RichEditor,
   editorToContent,
@@ -64,6 +65,8 @@ export function EditPostishkaPage() {
   const [post, setPost] = useState<Post | null>(null);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [ogCover, setOgCover] = useState<File | null>(null);
+  const [removeOgCover, setRemoveOgCover] = useState(false);
   const [accessLevel, setAccessLevel] = useState<1 | 2>(1);
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -78,6 +81,8 @@ export function EditPostishkaPage() {
         setTitle(loadedPost.title ?? "");
         setDescription(loadedPost.description ?? "");
         setAccessLevel(loadedPost.accessLevel === 2 ? 2 : 1);
+        setOgCover(null);
+        setRemoveOgCover(false);
       })
       .catch(() => setError("Не удалось загрузить постишку"));
   }, [postId]);
@@ -116,6 +121,8 @@ export function EditPostishkaPage() {
         html,
         files,
         accessLevel,
+        ogCover,
+        removeOgCover,
       );
       navigate(getPostishkaUrl(updatedPost));
     } catch {
@@ -166,6 +173,14 @@ export function EditPostishkaPage() {
           <span aria-hidden="true" />
         </button>
       </div>
+      <PostishkaCoverPicker
+        postId={post.id}
+        hasExistingCover={post.hasOgCover}
+        coverFile={ogCover}
+        removeExistingCover={removeOgCover}
+        onCoverFileChange={setOgCover}
+        onRemoveExistingCoverChange={setRemoveOgCover}
+      />
     </div>
   );
 }

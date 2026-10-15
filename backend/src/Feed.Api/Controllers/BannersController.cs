@@ -39,6 +39,7 @@ public class BannersController : ControllerBase
         PostSlug = banner.Post?.Slug ?? string.Empty,
         Title = banner.Post?.Title?.Trim() ?? "Без названия",
         CreatedAt = banner.Post?.CreatedAt ?? DateTime.UtcNow,
+        HasOgCover = !string.IsNullOrWhiteSpace(banner.Post?.OgCoverStorageKey),
         ImageUrl = banner.Post?.Files
             .FirstOrDefault(file => file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)) is { } image
             ? $"/api/files/post/{image.Id}/download"

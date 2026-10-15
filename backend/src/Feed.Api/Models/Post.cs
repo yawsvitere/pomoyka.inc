@@ -18,6 +18,7 @@ public class Post
     public List<PostFile> Files { get; set; } = new();
     public string? Title { get; set; }
     public string? Description { get; set; }
+    public string? OgCoverStorageKey { get; set; }
     public PostAccessLevel AccessLevel { get; set; } = PostAccessLevel.Authenticated;
     public List<PostBlock> Blocks { get; set; } = new();
     public List<PostComment> Comments { get; set; } = new();

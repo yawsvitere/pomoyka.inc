@@ -36,6 +36,7 @@ public class FilesController : ControllerBase
     private readonly ImagePreviewBackgroundService _imagePreviewBackgroundService;
     private readonly IHubContext<FeedHub> _feedHub;
     private readonly ILogger<FilesController> _logger;
+    private readonly OgImageStorageCache _ogImageCache;
     private readonly string _sevenZipExecutable;
 
     private const long MaxFileSizeBytes = 500L * 1024 * 1024;
@@ -51,13 +52,15 @@ public class FilesController : ControllerBase
         ImagePreviewBackgroundService imagePreviewBackgroundService,
         IHubContext<FeedHub> feedHub,
         ILogger<FilesController> logger,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        OgImageStorageCache ogImageCache)
     {
         _db = db;
         _storage = storage;
         _imagePreviewBackgroundService = imagePreviewBackgroundService;
         _feedHub = feedHub;
         _logger = logger;
+        _ogImageCache = ogImageCache;
         _sevenZipExecutable = configuration["SevenZip:ExecutablePath"] ?? "7z";
     }
 
@@ -87,6 +90,8 @@ public class FilesController : ControllerBase
 
         _db.PostFiles.Add(file);
         await _db.SaveChangesAsync();
+        if (post.IsPostishka)
+            await _ogImageCache.InvalidateAsync(OgImageStorageCache.PostKey(post.Id));
 
         var uploadUrl = _storage.GetPresignedUploadUrl(storageKey, request.ContentType);
 
@@ -335,6 +340,8 @@ public class FilesController : ControllerBase
         var userFile = new UserFile { OwnerId = userId.Value, FolderId = folderId, FileName = fileName, StorageKey = storageKey, ContentType = file.ContentType, SizeBytes = file.Length, Width = width, Height = height, AccessLevel = folder?.AccessLevel ?? FileAccessLevel.Authenticated };
         _db.UserFiles.Add(userFile);
         await _db.SaveChangesAsync();
+        if (folderId.HasValue)
+            await _ogImageCache.InvalidateAsync(OgImageStorageCache.GalleryKey(folderId.Value));
         if (file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
             _imagePreviewBackgroundService.Enqueue(storageKey, file.ContentType);
         return Ok(ToUserFileDto(userFile, folder));
@@ -363,6 +370,7 @@ public class FilesController : ControllerBase
         _db.UserFiles.RemoveRange(folder.Files);
         _db.FileFolders.Remove(folder);
         await _db.SaveChangesAsync();
+        await _ogImageCache.InvalidateAsync(OgImageStorageCache.GalleryKey(id));
         return NoContent();
     }
 
@@ -374,6 +382,8 @@ public class FilesController : ControllerBase
         if (file == null) return NotFound();
         file.AccessLevel = request.AccessLevel;
         await _db.SaveChangesAsync();
+        if (file.FolderId.HasValue)
+            await _ogImageCache.InvalidateAsync(OgImageStorageCache.GalleryKey(file.FolderId.Value));
         return Ok(ToUserFileDto(file));
     }
 
@@ -412,6 +422,7 @@ public class FilesController : ControllerBase
 
         if (file.FolderId != request.FolderId)
         {
+            var sourceFolderId = file.FolderId;
             var destinationKey = BuildLibraryStorageKey(userId!.Value, request.FolderId, file.FileName);
             await _storage.CopyObjectAsync(file.StorageKey, destinationKey);
             if (file.ContentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase))
@@ -427,6 +438,10 @@ public class FilesController : ControllerBase
             file.Folder = targetFolder;
             file.AccessLevel = targetFolder?.AccessLevel ?? FileAccessLevel.Private;
             await _db.SaveChangesAsync();
+            if (sourceFolderId.HasValue)
+                await _ogImageCache.InvalidateAsync(OgImageStorageCache.GalleryKey(sourceFolderId.Value));
+            if (request.FolderId.HasValue)
+                await _ogImageCache.InvalidateAsync(OgImageStorageCache.GalleryKey(request.FolderId.Value));
             if (file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
                 _imagePreviewBackgroundService.Enqueue(destinationKey, file.ContentType);
         }
@@ -443,6 +458,7 @@ public class FilesController : ControllerBase
         folder.AccessLevel = request.AccessLevel;
         foreach (var file in folder.Files) file.AccessLevel = request.AccessLevel;
         await _db.SaveChangesAsync();
+        await _ogImageCache.InvalidateAsync(OgImageStorageCache.GalleryKey(id));
         return NoContent();
     }
 
@@ -462,6 +478,7 @@ public class FilesController : ControllerBase
 
         folder.Name = name;
         await _db.SaveChangesAsync();
+        await _ogImageCache.InvalidateAsync(OgImageStorageCache.GalleryKey(id));
         return Ok(new FileFolderDto(folder.Id, folder.Name, folder.AccessLevel, folder.Files.Count, folder.CreatedAt, $"/files/gallery/{folder.Id}"));
     }
 
@@ -670,6 +687,19 @@ public class FilesController : ControllerBase
     [HttpGet("gallery/og/{folderId:guid}.png")]
     public async Task<IActionResult> GetGalleryOgImage(Guid folderId)
     {
+        var isPublicGallery = await _db.FileFolders.AsNoTracking()
+            .AnyAsync(x => x.Id == folderId && x.AccessLevel == FileAccessLevel.Public);
+        if (!isPublicGallery)
+            return NotFound();
+
+        var cacheKey = OgImageStorageCache.GalleryKey(folderId);
+        var cachedImage = await _ogImageCache.TryGetAsync(cacheKey, HttpContext.RequestAborted);
+        if (cachedImage != null)
+        {
+            Response.Headers.CacheControl = "no-cache";
+            return File(cachedImage, "image/png");
+        }
+
         var folder = await _db.FileFolders.AsNoTracking()
             .Include(x => x.Files)
             .Include(x => x.Owner)
@@ -814,9 +844,10 @@ public class FilesController : ControllerBase
 
         var stream = new MemoryStream();
         await canvas.SaveAsync(stream, new PngEncoder(), HttpContext.RequestAborted);
-        stream.Position = 0;
-        Response.Headers.CacheControl = "public, max-age=3600";
-        return File(stream, "image/png");
+        var imageBytes = stream.ToArray();
+        await _ogImageCache.StoreAsync(cacheKey, imageBytes);
+        Response.Headers.CacheControl = "no-cache";
+        return File(imageBytes, "image/png");
     }
 
     [AllowAnonymous]
@@ -1134,6 +1165,7 @@ public class FilesController : ControllerBase
         var userId = GetUserId();
         var file = await _db.UserFiles.FirstOrDefaultAsync(x => x.Id == id && x.OwnerId == userId);
         if (file == null) return NotFound();
+        var folderId = file.FolderId;
         if (!IsContentAddressedKey(file.StorageKey))
         {
             await _storage.DeleteObjectAsync(file.StorageKey);
@@ -1144,6 +1176,8 @@ public class FilesController : ControllerBase
         }
         _db.UserFiles.Remove(file);
         await _db.SaveChangesAsync();
+        if (folderId.HasValue)
+            await _ogImageCache.InvalidateAsync(OgImageStorageCache.GalleryKey(folderId.Value));
         return NoContent();
     }
 
@@ -1165,6 +1199,8 @@ public class FilesController : ControllerBase
         }
         _db.PostFiles.Remove(file);
         await _db.SaveChangesAsync();
+        if (file.Post!.IsPostishka)
+            await _ogImageCache.InvalidateAsync(OgImageStorageCache.PostKey(file.PostId));
 
         return NoContent();
     }
@@ -1199,6 +1235,8 @@ public class FilesController : ControllerBase
         };
         _db.PostFiles.Add(postFile);
         await _db.SaveChangesAsync();
+        if (post.IsPostishka)
+            await _ogImageCache.InvalidateAsync(OgImageStorageCache.PostKey(postId));
         if (postFile.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
             _imagePreviewBackgroundService.Enqueue(storageKey, postFile.ContentType);
 
@@ -1250,6 +1288,7 @@ public class FilesController : ControllerBase
             await _storage.DeleteObjectAsync(GetAvatarStorageKey(user.AvatarUrl));
         user.AvatarUrl = storageKey;
         await _db.SaveChangesAsync();
+        await _ogImageCache.InvalidateUserAsync(_db, user.Id);
         var avatarUrl = $"/api/files/avatar/{userId.Value}?v={Uri.EscapeDataString(storageKey)}";
         await _feedHub.Clients.Group("feed-global")
             .SendAsync("UserAvatarChanged", userId.Value, avatarUrl);

@@ -74,6 +74,7 @@ export async function createArticle(
   text: string,
   files: File[],
   accessLevel: 1 | 2,
+  ogCover?: File | null,
 ) {
   const formData = new FormData();
   formData.append("title", title);
@@ -81,6 +82,7 @@ export async function createArticle(
   formData.append("text", text);
   formData.append("accessLevel", String(accessLevel));
   files.forEach((file) => formData.append("files", file, file.name));
+  if (ogCover) formData.append("ogCover", ogCover, ogCover.name);
   const { data } = await apiClient.post<Post>("/api/posts/article", formData);
   return data;
 }
@@ -92,6 +94,8 @@ export async function updateArticle(
   text: string,
   files: File[],
   accessLevel: 1 | 2,
+  ogCover?: File | null,
+  removeOgCover = false,
 ) {
   const formData = new FormData();
   formData.append("title", title);
@@ -99,10 +103,19 @@ export async function updateArticle(
   formData.append("text", text);
   formData.append("accessLevel", String(accessLevel));
   files.forEach((file) => formData.append("files", file, file.name));
+  if (ogCover) formData.append("ogCover", ogCover, ogCover.name);
+  formData.append("removeOgCover", String(removeOgCover));
   const { data } = await apiClient.put<Post>(
     `/api/posts/${id}/article`,
     formData,
   );
+  return data;
+}
+
+export async function getPostishkaCover(id: string) {
+  const { data } = await apiClient.get<Blob>(`/api/posts/${id}/cover`, {
+    responseType: "blob",
+  });
   return data;
 }
 

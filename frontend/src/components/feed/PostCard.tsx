@@ -12,6 +12,7 @@ import { Video, VideoPlayer, VideoSkin } from "@videojs/react/video";
 import "@videojs/react/video/skin.css";
 import { PhotoProvider, PhotoView } from "react-photo-view";
 import type { Post } from "../../api/types";
+import { apiClient } from "../../api/client";
 import { CommentItem } from "./CommentItem";
 import { CommentComposer } from "./CommentComposer";
 import { ContextMenu } from "./ContextMenu";
@@ -94,6 +95,56 @@ function isAdmin() {
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
+}
+
+function PostishkaOgPreview({
+  postId,
+  href,
+}: {
+  postId: string;
+  href: string;
+}) {
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    let objectUrl: string | null = null;
+
+    void apiClient
+      .get<Blob>(`/api/posts/og/${postId}.png`, { responseType: "blob" })
+      .then(({ data }) => {
+        objectUrl = URL.createObjectURL(data);
+        if (active) setImageUrl(objectUrl);
+        else URL.revokeObjectURL(objectUrl);
+      })
+      .catch(() => {
+        if (active) setFailed(true);
+      });
+
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [postId]);
+
+  return (
+    <Link className="postishka-og-preview" to={href}>
+      {imageUrl ? (
+        <img src={imageUrl} alt="" loading="lazy" />
+      ) : (
+        <div className="postishka-og-placeholder">
+          {failed ? "Превью недоступно" : "Загружаем превью…"}
+        </div>
+      )}
+      <span className="postishka-og-action">
+        <span>
+          Открыть постишку
+          <span className="postishka-og-arrow" aria-hidden="true">→</span>
+        </span>
+      </span>
+    </Link>
+  );
 }
 
 function calculateMosaicLayout(
@@ -445,6 +496,9 @@ export function PostCard({
     </span>
   );
   const authorColor = post.author.nicknameColor ?? "#4f46e5";
+  const postishkaHref = post.isPostishka
+    ? getPostishkaUrl(post)
+    : `/posts/${post.relatedPostId}`;
   const imageFiles = post.files.filter((file) =>
     file.contentType.startsWith("image/"),
   );
@@ -532,9 +586,11 @@ export function PostCard({
     ) : null;
   const articleText =
     post.blocks?.find((block) => block.type === "text")?.text?.trim() ?? "";
-  const hasPostText = post.isArticle
-    ? Boolean(post.title?.trim() || articleText)
-    : Boolean(post.text?.trim());
+  const hasPostText =
+    !post.relatedPostId &&
+    (post.isArticle
+      ? Boolean(post.title?.trim() || articleText)
+      : Boolean(post.text?.trim()));
   const isMediaOnly = post.files.length > 0 && !hasPostText && !reactionChips;
   const isReactionsOnly =
     post.files.length === 0 && !hasPostText && !!reactionChips;
@@ -567,7 +623,7 @@ export function PostCard({
             <span className="post-avatar-spacer" aria-hidden="true" />
           )}
           <div
-            className={`post-body${imageFiles.length > 1 ? " post-body--with-files" : ""}${isMediaOnly ? " post-body--media-only" : ""}${isReactionsOnly ? " post-body--reactions-only" : ""}${isTextOnly ? " post-body--text-only" : ""}`}
+            className={`post-body${imageFiles.length > 1 ? " post-body--with-files" : ""}${isMediaOnly ? " post-body--media-only" : ""}${isReactionsOnly ? " post-body--reactions-only" : ""}${isTextOnly ? " post-body--text-only" : ""}${post.isPostishka || post.relatedPostId ? " post-body--postishka-preview" : ""}`}
           >
             {showAuthor && (
               <div className="post-meta">
@@ -591,7 +647,7 @@ export function PostCard({
                 </div>
               </div>
             )}
-            {post.files.length > 0 && (
+            {post.files.length > 0 && !post.isPostishka && (
               <div className="post-files-wrap">
                 <div className="post-files">
                   {imageFiles.length > 0 && (
@@ -638,7 +694,20 @@ export function PostCard({
                 )}
               </div>
             )}
-            {hasPostText && (
+            {post.isPostishka ? (
+              <>
+                <PostishkaOgPreview
+                  postId={post.id}
+                  href={postishkaHref}
+                />
+                <span className="post-time post-time--bottom">
+                  {new Date(post.createdAt).toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </span>
+              </>
+            ) : hasPostText ? (
               <div className="post-content-row">
                 {post.isArticle ? (
                   <div className="article-preview">
@@ -669,17 +738,15 @@ export function PostCard({
                   })}
                 </span>
               </div>
+            ) : null}
+            {post.relatedPostId && !post.isPostishka && (
+              <PostishkaOgPreview
+                postId={post.relatedPostId}
+                href={postishkaHref}
+              />
             )}
             {reactionsOverlay ?? reactionsInline}
-            {post.relatedPostId && (
-              <Link
-                className="post-related-link"
-                to={`/posts/${post.relatedPostId}`}
-              >
-                Читать постишку →
-              </Link>
-            )}
-            {imageFiles.length === 0 && !hasPostText && (
+            {!post.isPostishka && imageFiles.length === 0 && !hasPostText && (
               <span
                 className={`post-time post-time--bottom${videoFiles.length > 0 ? " post-time--below-video" : ""}`}
               >

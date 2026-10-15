@@ -167,6 +167,7 @@ builder.Services.AddSingleton<IAmazonS3>(_ =>
         s3Config);
 });
 builder.Services.AddScoped<IStorageService, StorageService>();
+builder.Services.AddScoped<OgImageStorageCache>();
 builder.Services.AddHttpClient();
 builder.Services.AddScoped<AvatarImageOptimizer>();
 builder.Services.AddScoped<IJwtService, JwtService>();

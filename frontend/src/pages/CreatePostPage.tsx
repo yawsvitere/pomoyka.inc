@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import type { Editor } from "@tiptap/react";
 import * as postsApi from "../api/posts";
+import { PostishkaCoverPicker } from "../components/editor/PostishkaCoverPicker";
 import {
   RichEditor,
   editorToContent,
@@ -15,6 +16,8 @@ export function CreatePostPage() {
   const editorRef = useRef<Editor | null>(null);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [ogCover, setOgCover] = useState<File | null>(null);
+  const [removeOgCover, setRemoveOgCover] = useState(false);
   const [accessLevel, setAccessLevel] = useState<1 | 2>(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -47,6 +50,7 @@ export function CreatePostPage() {
         html,
         files,
         accessLevel,
+        ogCover,
       );
       navigate("/posts");
     } catch {
@@ -100,6 +104,12 @@ export function CreatePostPage() {
           <span aria-hidden="true" />
         </button>
       </div>
+      <PostishkaCoverPicker
+        coverFile={ogCover}
+        removeExistingCover={removeOgCover}
+        onCoverFileChange={setOgCover}
+        onRemoveExistingCoverChange={setRemoveOgCover}
+      />
     </div>
   );
 }

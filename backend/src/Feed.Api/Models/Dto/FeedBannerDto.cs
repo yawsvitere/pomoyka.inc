@@ -8,4 +8,5 @@ public class FeedBannerDto
     public string Title { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; }
     public string? ImageUrl { get; set; }
+    public bool HasOgCover { get; set; }
 }
