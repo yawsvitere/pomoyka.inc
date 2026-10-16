@@ -61,6 +61,8 @@ public class PostsController : ControllerBase
 
         if (pageSize < 1)
             pageSize = 20;
+        else
+            pageSize = Math.Min(pageSize, 100);
 
         var pomoyka = await _pomoykaService.GetOrCreateTodaysPomoykaAsync();
 

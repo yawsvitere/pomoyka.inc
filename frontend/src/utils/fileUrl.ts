@@ -13,7 +13,7 @@ export function getBrowserFileUrl(url: string) {
 
 export function getImageProxyUrl(url: string, width: number) {
   const proxyBaseUrl = (import.meta.env.VITE_IMGPROXY_URL || '/imgproxy').replace(/\/$/, '');
-  const sourceBaseUrl = import.meta.env.VITE_IMGPROXY_SOURCE_URL || 'http://minio:9000';
+  const sourceBaseUrl = import.meta.env.VITE_IMGPROXY_SOURCE_URL || 'http://storage:9000';
   const sourceUrl = new URL(url);
   const proxySourceUrl = new URL(`${sourceUrl.pathname}${sourceUrl.search}`, sourceBaseUrl).href;
   return `${proxyBaseUrl}/insecure/rs:fit:${width}:0/plain/${encodeURIComponent(proxySourceUrl)}@webp`;

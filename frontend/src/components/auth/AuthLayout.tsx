@@ -1,5 +1,14 @@
+import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import "../../styles/pages/auth.css";
+
+const AUTH_BACKGROUND_IMAGES = [
+  "/authimage.webp",
+  "/authimage2.webp",
+  "/authimage3.webp",
+  "/authimage4.webp",
+  "/authimage5.webp",
+];
 
 interface AuthLayoutProps {
   title: string;
@@ -7,26 +16,40 @@ interface AuthLayoutProps {
 }
 
 export function AuthLayout({ title, children }: AuthLayoutProps) {
+  const [loadedBackgroundImages, setLoadedBackgroundImages] = useState(
+    () => new Set([0]),
+  );
+
+  useEffect(() => {
+    const timers = AUTH_BACKGROUND_IMAGES.slice(1).map((_, index) =>
+      window.setTimeout(
+        () => {
+          setLoadedBackgroundImages((loaded) => new Set(loaded).add(index + 1));
+        },
+        (index + 1) * 7_000 - 3_500,
+      ),
+    );
+
+    return () => timers.forEach(window.clearTimeout);
+  }, []);
+
   return (
     <main className="auth-page">
       <div className="auth-card">
         <aside className="auth-side">
           <div className="auth-background" aria-hidden="true">
-            <div className="auth-background-slide">
-              <img src="/authimage.webp" alt="" />
-            </div>
-            <div className="auth-background-slide">
-              <img src="/authimage2.webp" alt="" />
-            </div>
-            <div className="auth-background-slide">
-              <img src="/authimage3.webp" alt="" />
-            </div>
-            <div className="auth-background-slide">
-              <img src="/authimage4.webp" alt="" />
-            </div>
-            <div className="auth-background-slide">
-              <img src="/authimage5.webp" alt="" />
-            </div>
+            {AUTH_BACKGROUND_IMAGES.map((image, index) => (
+              <div className="auth-background-slide" key={image}>
+                {loadedBackgroundImages.has(index) && (
+                  <img
+                    src={image}
+                    alt=""
+                    decoding="async"
+                    fetchPriority={index === 0 ? "high" : "auto"}
+                  />
+                )}
+              </div>
+            ))}
           </div>
 
           <div className="auth-logo">

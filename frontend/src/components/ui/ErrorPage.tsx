@@ -32,7 +32,7 @@ export function ErrorPage({ status, title, description }: ErrorPageProps) {
         <div className="error-page-audio">
           <AudioPlayer>
             <AudioSkin>
-              <Audio src="/eror.mp3" playsInline />
+              <Audio src="/eror.mp3" playsInline preload="none" />
             </AudioSkin>
           </AudioPlayer>
         </div>

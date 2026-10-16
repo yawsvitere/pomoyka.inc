@@ -136,20 +136,11 @@ public class FilesController : ControllerBase
             .Where(x => visibleAccessLevels.Contains(x.AccessLevel))
             .OrderByDescending(x => x.UploadedAt)
             .ToListAsync();
-        var mainFeedFiles = await _db.PostFiles.AsNoTracking()
+        var postFiles = await _db.PostFiles.AsNoTracking()
             .Include(x => x.Post)
-            .Where(x => x.Post != null && !x.Post.IsPostishka)
+            .Where(x => x.Post != null)
             .OrderByDescending(x => x.UploadedAt)
             .ToListAsync();
-        var postishkaFiles = await _db.PostFiles.AsNoTracking()
-            .Include(x => x.Post)
-            .Where(x => x.Post != null && x.Post.IsPostishka)
-            .OrderByDescending(x => x.UploadedAt)
-            .ToListAsync();
-        var postFiles = mainFeedFiles
-            .Concat(postishkaFiles)
-            .OrderByDescending(x => x.UploadedAt)
-            .ToList();
         var shitpostFolderId = Guid.Empty;
         folders.Insert(0, new FileFolderDto(
             shitpostFolderId,

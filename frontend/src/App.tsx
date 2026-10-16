@@ -2,9 +2,13 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { lazy, Suspense, useEffect } from "react";
 
 import { AuthProvider, useAuth } from "./context/AuthContext";
-import { ErrorPage } from "./components/ui/ErrorPage";
 import { ToastProvider } from "./components/ui/Toast";
 
+const ErrorPage = lazy(() =>
+  import("./components/ui/ErrorPage").then(({ ErrorPage }) => ({
+    default: ErrorPage,
+  })),
+);
 const AuthPage = lazy(() =>
   import("./pages/AuthPage").then(({ AuthPage }) => ({ default: AuthPage })),
 );

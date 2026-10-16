@@ -1,8 +1,8 @@
 import { createContext, useContext, useState, useEffect } from "react";
 import type { ReactNode } from "react";
-import { HubConnectionBuilder, LogLevel } from "@microsoft/signalr";
 import type { User } from "../api/types";
-import * as authApi from "../api/auth";
+
+type HubConnection = import("@microsoft/signalr").HubConnection;
 
 interface AuthContextValue {
   user: User | null;
@@ -58,31 +58,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     heartbeat();
     const intervalId = window.setInterval(heartbeat, 60_000);
 
-    const connection = new HubConnectionBuilder()
-      .withUrl(`${import.meta.env.VITE_API_URL ?? ""}/hubs/feed`, {
-        accessTokenFactory: () => localStorage.getItem("token") ?? "",
+    let active = true;
+    let connection: HubConnection | null = null;
+
+    void import("@microsoft/signalr")
+      .then(({ HubConnectionBuilder, LogLevel }) => {
+        if (!active) return;
+
+        connection = new HubConnectionBuilder()
+          .withUrl(`${import.meta.env.VITE_API_URL ?? ""}/hubs/feed`, {
+            accessTokenFactory: () => localStorage.getItem("token") ?? "",
+          })
+          .withAutomaticReconnect()
+          .configureLogging(LogLevel.Warning)
+          .build();
+
+        connection.on("UserRoleChanged", () => {
+          void import("../api/auth")
+            .then(({ refreshToken }) => refreshToken())
+            .then((res) => {
+              localStorage.setItem("token", res.token);
+              localStorage.setItem("user", JSON.stringify(res.user));
+              setUser(res.user);
+            })
+            .catch(() => undefined);
+        });
+
+        return connection.start().catch(() => undefined);
       })
-      .withAutomaticReconnect()
-      .configureLogging(LogLevel.Warning)
-      .build();
-
-    connection.on("UserRoleChanged", () => {
-      void authApi.refreshToken().then((res) => {
-        localStorage.setItem("token", res.token);
-        localStorage.setItem("user", JSON.stringify(res.user));
-        setUser(res.user);
-      }).catch(() => undefined);
-    });
-
-    void connection.start().catch(() => undefined);
+      .catch(() => undefined);
 
     return () => {
+      active = false;
       window.clearInterval(intervalId);
-      void connection.stop();
+      if (connection) void connection.stop();
     };
   }, [user?.id]);
 
   async function login(email: string, password: string) {
+    const authApi = await import("../api/auth");
     const res = await authApi.login(email, password);
     localStorage.setItem("token", res.token);
     localStorage.setItem("user", JSON.stringify(res.user));
@@ -95,6 +109,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     displayName: string,
     inviteCode: string,
   ) {
+    const authApi = await import("../api/auth");
     const res = await authApi.register(
       email,
       password,

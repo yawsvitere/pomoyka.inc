@@ -3,7 +3,6 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { AuthLayout } from "../components/auth/AuthLayout";
 import { useToast } from "../components/ui/useToast";
 import { useAuth } from "../context/AuthContext";
-import * as authApi from "../api/auth";
 import eyeOffIcon from "../assets/icons/eye-off-outline.svg";
 import eyeOpenIcon from "../assets/icons/eye-open.svg";
 
@@ -53,6 +52,7 @@ export function AuthPage() {
             return;
           }
 
+          const authApi = await import("../api/auth");
           await authApi.verifyInviteCode(code);
           setInviteCode(code);
           setRegistrationStep("details");
