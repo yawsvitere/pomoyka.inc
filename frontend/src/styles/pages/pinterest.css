@@ -66,6 +66,17 @@
   font-size: 14px;
 }
 
+.pinterest-page-retry {
+  display: block;
+  margin: 16px auto;
+  padding: 8px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-text);
+  cursor: pointer;
+}
+
 @media (max-width: 700px) {
   .pinterest-page {
     padding: 0;

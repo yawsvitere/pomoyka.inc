@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import * as filesApi from "../api/files";
+import { InfiniteScroll } from "../components/ui/InfiniteScroll";
 import { Pinterest } from "../components/ui/Pinterest";
 import { Spinner } from "../components/ui/Spinner";
 import { useToast } from "../components/ui/useToast";
@@ -19,12 +20,22 @@ export function PinterestPage() {
   const [media, setMedia] = useState<filesApi.PinterestMedia[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadMoreFailed, setLoadMoreFailed] = useState(false);
+  const [shuffleSeed] = useState(
+    () => Math.floor(Math.random() * 2_147_483_647),
+  );
+  const pageRef = useRef(1);
+  const loadingMoreRef = useRef(false);
 
   useEffect(() => {
     let active = true;
-    void filesApi.getPinterestMedia()
-      .then((items) => {
-        if (active) setMedia(shuffleMedia(items));
+    void filesApi.getPinterestMedia(1, 50, shuffleSeed)
+      .then((result) => {
+        if (active) {
+          setMedia(shuffleMedia(result.items));
+          setHasMore(result.hasMore);
+        }
       })
       .catch(() => {
         if (active) {
@@ -38,7 +49,24 @@ export function PinterestPage() {
     return () => {
       active = false;
     };
-  }, [notify]);
+  }, [notify, shuffleSeed]);
+
+  const loadMore = useCallback(async () => {
+    if (loadingMoreRef.current || !hasMore || loadMoreFailed) return;
+    loadingMoreRef.current = true;
+    try {
+      const nextPage = pageRef.current + 1;
+      const result = await filesApi.getPinterestMedia(nextPage, 50, shuffleSeed);
+      setMedia((current) => [...current, ...shuffleMedia(result.items)]);
+      pageRef.current = nextPage;
+      setHasMore(result.hasMore);
+    } catch {
+      setLoadMoreFailed(true);
+      notify("error", "Не удалось загрузить следующие изображения");
+    } finally {
+      loadingMoreRef.current = false;
+    }
+  }, [hasMore, loadMoreFailed, notify, shuffleSeed]);
 
   if (isLoading) {
     return <div className="pinterest-page-state"><Spinner label="Загрузка Pinterest" /></div>;
@@ -59,9 +87,25 @@ export function PinterestPage() {
       <header className="pinterest-page-header">
       </header>
       {images.length > 0 ? (
-        <Pinterest images={images} />
+        <InfiniteScroll
+          hasMore={hasMore && !loadMoreFailed}
+          isLoading={false}
+          onLoadMore={loadMore}
+          loadingLabel="Загрузка изображений"
+        >
+          <Pinterest images={images} />
+        </InfiniteScroll>
       ) : loadFailed ? null : (
         <p className="pinterest-page-empty">Пока нет доступных изображений и видео</p>
+      )}
+      {loadMoreFailed && (
+        <button
+          className="pinterest-page-retry"
+          type="button"
+          onClick={() => setLoadMoreFailed(false)}
+        >
+          Повторить загрузку
+        </button>
       )}
     </section>
   );

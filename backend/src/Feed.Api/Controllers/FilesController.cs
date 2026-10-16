@@ -218,8 +218,13 @@ public class FilesController : ControllerBase
     }
 
     [HttpGet("pinterest")]
-    public async Task<ActionResult<IEnumerable<PinterestMediaDto>>> GetPinterestMedia()
+    public async Task<ActionResult<PinterestMediaPageDto>> GetPinterestMedia(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 50,
+        [FromQuery] int seed = 0)
     {
+        page = Math.Max(page, 1);
+        pageSize = Math.Clamp(pageSize, 1, 50);
         var visibleAccessLevels = new[] { FileAccessLevel.Public, FileAccessLevel.Authenticated };
         var userFiles = await _db.UserFiles.AsNoTracking()
             .Where(x => visibleAccessLevels.Contains(x.AccessLevel) &&
@@ -273,7 +278,32 @@ public class FilesController : ControllerBase
                     : null));
         }
 
-        return Ok(media.OrderByDescending(x => x.UploadedAt));
+        var orderedMedia = media
+            .OrderBy(x => GetPinterestShuffleKey(x.Id, seed))
+            .ThenBy(x => x.Id, StringComparer.Ordinal)
+            .ToList();
+        var offset = (long)(page - 1) * pageSize;
+        List<PinterestMediaDto> items = offset >= orderedMedia.Count
+            ? []
+            : orderedMedia.Skip((int)offset).Take(pageSize).ToList();
+        return Ok(new PinterestMediaPageDto(
+            items,
+            (long)orderedMedia.Count > (long)page * pageSize));
+    }
+
+    private static ulong GetPinterestShuffleKey(string id, int seed)
+    {
+        const ulong offsetBasis = 14695981039346656037;
+        const ulong prime = 1099511628211;
+        var hash = offsetBasis;
+
+        foreach (var character in $"{seed}:{id}")
+        {
+            hash ^= character;
+            hash = unchecked(hash * prime);
+        }
+
+        return hash;
     }
 
     [HttpPost("folders")]

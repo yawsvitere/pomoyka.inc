@@ -42,6 +42,10 @@ export interface PinterestMedia {
   downloadUrl: string;
   previewUrl: string | null;
 }
+export interface PinterestMediaPage {
+  items: PinterestMedia[];
+  hasMore: boolean;
+}
 export interface LinkPreview {
   url: string;
   title: string;
@@ -65,8 +69,12 @@ export async function getCommonLibrary() {
 export async function getQuota() {
   return (await apiClient.get<StorageQuota>("/api/files/quota")).data;
 }
-export async function getPinterestMedia() {
-  return (await apiClient.get<PinterestMedia[]>("/api/files/pinterest")).data;
+export async function getPinterestMedia(page = 1, pageSize = 50, seed = 0) {
+  return (
+    await apiClient.get<PinterestMediaPage>("/api/files/pinterest", {
+      params: { page, pageSize, seed },
+    })
+  ).data;
 }
 export async function getProfileLibrary(displayName: string) {
   return (
