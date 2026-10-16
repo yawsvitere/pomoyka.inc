@@ -27,6 +27,7 @@ public class PostsController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly IStorageService _storage;
+    private readonly ContentAddressedPreviewCleanupService _contentAddressedPreviewCleanup;
     private readonly ImagePreviewBackgroundService _imagePreviewBackgroundService;
     private readonly IHubContext<FeedHub> _hub;
     private readonly PomoykaService _pomoykaService;
@@ -36,6 +37,7 @@ public class PostsController : ControllerBase
     public PostsController(
         AppDbContext db,
         IStorageService storage,
+        ContentAddressedPreviewCleanupService contentAddressedPreviewCleanup,
         ImagePreviewBackgroundService imagePreviewBackgroundService,
         IHubContext<FeedHub> hub,
         PomoykaService pomoykaService,
@@ -44,6 +46,7 @@ public class PostsController : ControllerBase
     {
         _db = db;
         _storage = storage;
+        _contentAddressedPreviewCleanup = contentAddressedPreviewCleanup;
         _imagePreviewBackgroundService = imagePreviewBackgroundService;
         _hub = hub;
         _pomoykaService = pomoykaService;
@@ -734,6 +737,8 @@ public class PostsController : ControllerBase
 
         var post = await _db.Posts
             .Include(p => p.Files)
+            .Include(p => p.Comments)
+                .ThenInclude(comment => comment.Files)
             .FirstOrDefaultAsync(p => p.Id == id);
 
         if (post == null)
@@ -752,9 +757,15 @@ public class PostsController : ControllerBase
                 await _storage.DeleteObjectAsync(file.StorageKey);
         }
 
+        var deletedFiles = post.Files
+            .Select(file => (file.StorageKey, file.ContentType))
+            .Concat(post.Comments.SelectMany(comment => comment.Files)
+                .Select(file => (file.StorageKey, file.ContentType)))
+            .ToArray();
         _db.Posts.Remove(post);
 
         await _db.SaveChangesAsync();
+        await _contentAddressedPreviewCleanup.DeleteUnusedPreviewsAsync(deletedFiles);
         await _ogImageCache.InvalidateAsync(OgImageStorageCache.PostKey(id));
 
         await _hub.Clients
@@ -801,7 +812,8 @@ public class PostsController : ControllerBase
             .Select(fileId => fileId!.Value)
             .ToHashSet();
 
-        foreach (var file in post.Files.Where(file => !keptFileIds.Contains(file.Id)).ToList())
+        var deletedFiles = post.Files.Where(file => !keptFileIds.Contains(file.Id)).ToList();
+        foreach (var file in deletedFiles)
         {
             if (!file.StorageKey.StartsWith("sha256/", StringComparison.Ordinal))
                 await _storage.DeleteObjectAsync(file.StorageKey);
@@ -850,6 +862,8 @@ public class PostsController : ControllerBase
             ? PostAccessLevel.Public
             : PostAccessLevel.Authenticated;
         await _db.SaveChangesAsync();
+        await _contentAddressedPreviewCleanup.DeleteUnusedPreviewsAsync(
+            deletedFiles.Select(file => (file.StorageKey, file.ContentType)));
         await _ogImageCache.InvalidateAsync(OgImageStorageCache.PostKey(post.Id));
 
         foreach (var image in uploadedFiles.Where(file =>

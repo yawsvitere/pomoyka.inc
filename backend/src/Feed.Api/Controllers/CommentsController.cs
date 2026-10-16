@@ -20,6 +20,7 @@ public class CommentsController : ControllerBase
     private readonly AppDbContext _db;
     private readonly IHubContext<FeedHub> _hub;
     private readonly IStorageService _storage;
+    private readonly ContentAddressedPreviewCleanupService _contentAddressedPreviewCleanup;
     private readonly ImagePreviewBackgroundService _imagePreviewBackgroundService;
 
     private const int MaxCommentImages = 10;
@@ -29,11 +30,13 @@ public class CommentsController : ControllerBase
         AppDbContext db,
         IHubContext<FeedHub> hub,
         IStorageService storage,
+        ContentAddressedPreviewCleanupService contentAddressedPreviewCleanup,
         ImagePreviewBackgroundService imagePreviewBackgroundService)
     {
         _db = db;
         _hub = hub;
         _storage = storage;
+        _contentAddressedPreviewCleanup = contentAddressedPreviewCleanup;
         _imagePreviewBackgroundService = imagePreviewBackgroundService;
     }
 
@@ -121,6 +124,8 @@ public class CommentsController : ControllerBase
         }
         _db.PostComments.Remove(comment);
         await _db.SaveChangesAsync();
+        await _contentAddressedPreviewCleanup.DeleteUnusedPreviewsAsync(
+            comment.Files.Select(file => (file.StorageKey, file.ContentType)));
         await _hub.Clients.Group("feed-global").SendAsync("CommentDeleted", postId, id);
         return NoContent();
     }

@@ -36,6 +36,8 @@ public sealed class ImagePreviewBackgroundService : BackgroundService
         }
     }
 
+    public void Forget(string storageKey) => _completed.TryRemove(storageKey, out _);
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         await EnqueueMissingPreviewsAsync(stoppingToken);
@@ -77,6 +79,10 @@ public sealed class ImagePreviewBackgroundService : BackgroundService
                 }
 
                 _completed.TryAdd(job.StorageKey, 0);
+                var cleanup = scope.ServiceProvider
+                    .GetRequiredService<ContentAddressedPreviewCleanupService>();
+                await cleanup.DeleteUnusedPreviewsAsync(
+                    new[] { (job.StorageKey, job.ContentType) });
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {

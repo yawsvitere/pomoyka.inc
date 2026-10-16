@@ -33,6 +33,7 @@ public class FilesController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly IStorageService _storage;
+    private readonly ContentAddressedPreviewCleanupService _contentAddressedPreviewCleanup;
     private readonly ImagePreviewBackgroundService _imagePreviewBackgroundService;
     private readonly IHubContext<FeedHub> _feedHub;
     private readonly ILogger<FilesController> _logger;
@@ -49,6 +50,7 @@ public class FilesController : ControllerBase
     public FilesController(
         AppDbContext db,
         IStorageService storage,
+        ContentAddressedPreviewCleanupService contentAddressedPreviewCleanup,
         ImagePreviewBackgroundService imagePreviewBackgroundService,
         IHubContext<FeedHub> feedHub,
         ILogger<FilesController> logger,
@@ -57,6 +59,7 @@ public class FilesController : ControllerBase
     {
         _db = db;
         _storage = storage;
+        _contentAddressedPreviewCleanup = contentAddressedPreviewCleanup;
         _imagePreviewBackgroundService = imagePreviewBackgroundService;
         _feedHub = feedHub;
         _logger = logger;
@@ -379,6 +382,8 @@ public class FilesController : ControllerBase
             .Select(file => new FileStorageObject(file.StorageKey, file.ContentType, null)).ToListAsync();
         await _storage.DeleteObjectsAsync(GetDeletableObjectKeys(files));
         await _db.UserFiles.Where(file => file.FolderId == id).ExecuteDeleteAsync();
+        await _contentAddressedPreviewCleanup.DeleteUnusedPreviewsAsync(
+            files.Select(file => (file.StorageKey, file.ContentType)));
         await _db.FileFolders.Where(item => item.Id == id).ExecuteDeleteAsync();
         await _ogImageCache.InvalidateAsync(OgImageStorageCache.GalleryKey(id));
         return NoContent();
@@ -430,6 +435,8 @@ public class FilesController : ControllerBase
         await _storage.DeleteObjectsAsync(GetDeletableObjectKeys(files));
         await _db.UserFiles.Where(file => file.OwnerId == userId && ids.Contains(file.Id))
             .ExecuteDeleteAsync();
+        await _contentAddressedPreviewCleanup.DeleteUnusedPreviewsAsync(
+            files.Select(file => (file.StorageKey, file.ContentType)));
         foreach (var folderId in files.Where(file => file.FolderId.HasValue).Select(file => file.FolderId!.Value).Distinct())
             await _ogImageCache.InvalidateAsync(OgImageStorageCache.GalleryKey(folderId));
         return NoContent();
@@ -471,6 +478,7 @@ public class FilesController : ControllerBase
         if (file.FolderId != request.FolderId)
         {
             var sourceFolderId = file.FolderId;
+            var sourceStorageKey = file.StorageKey;
             var destinationKey = BuildLibraryStorageKey(userId!.Value, request.FolderId, file.FileName);
             await _storage.CopyObjectAsync(file.StorageKey, destinationKey);
             if (file.ContentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase))
@@ -486,6 +494,8 @@ public class FilesController : ControllerBase
             file.Folder = targetFolder;
             file.AccessLevel = targetFolder?.AccessLevel ?? FileAccessLevel.Private;
             await _db.SaveChangesAsync();
+            await _contentAddressedPreviewCleanup.DeleteUnusedPreviewsAsync(
+                new[] { (sourceStorageKey, file.ContentType) });
             if (sourceFolderId.HasValue)
                 await _ogImageCache.InvalidateAsync(OgImageStorageCache.GalleryKey(sourceFolderId.Value));
             if (request.FolderId.HasValue)
@@ -1226,6 +1236,8 @@ public class FilesController : ControllerBase
         }
         _db.UserFiles.Remove(file);
         await _db.SaveChangesAsync();
+        await _contentAddressedPreviewCleanup.DeleteUnusedPreviewsAsync(
+            new[] { (file.StorageKey, file.ContentType) });
         if (folderId.HasValue)
             await _ogImageCache.InvalidateAsync(OgImageStorageCache.GalleryKey(folderId.Value));
         return NoContent();
@@ -1249,6 +1261,8 @@ public class FilesController : ControllerBase
         }
         _db.PostFiles.Remove(file);
         await _db.SaveChangesAsync();
+        await _contentAddressedPreviewCleanup.DeleteUnusedPreviewsAsync(
+            new[] { (file.StorageKey, file.ContentType) });
         if (file.Post!.IsPostishka)
             await _ogImageCache.InvalidateAsync(OgImageStorageCache.PostKey(file.PostId));
 
