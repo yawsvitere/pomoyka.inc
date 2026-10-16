@@ -95,6 +95,7 @@
 }
 
 .post-body--reactions-only .post-meta {
+  margin-top: 0;
   margin-bottom: 0;
 }
 
@@ -557,7 +558,7 @@
   max-width: none;
   margin: 0;
   pointer-events: auto;
-  padding-left: 4px;
+  padding-left: 6px;
 }
 
 .post-reactions--inline {
@@ -566,6 +567,22 @@
   margin: 0 0 10px;
   justify-content: flex-start;
   pointer-events: auto;
+}
+
+.post-reactions-footer {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  margin-bottom: 6px;
+  margin-top: 6px;
+}
+
+.post-reactions-footer .post-reactions {
+  flex: 1 1 auto;
+}
+
+.post-reactions-footer .post-reactions--inline {
+  margin-bottom: 0;
 }
 
 .reaction-chip {

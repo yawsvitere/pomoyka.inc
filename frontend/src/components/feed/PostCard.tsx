@@ -591,7 +591,7 @@ export function PostCard({
     (post.isArticle
       ? Boolean(post.title?.trim() || articleText)
       : Boolean(post.text?.trim()));
-  const isMediaOnly = post.files.length > 0 && !hasPostText && !reactionChips;
+  const isMediaOnly = post.files.length > 0 && !hasPostText;
   const isReactionsOnly =
     post.files.length === 0 && !hasPostText && !!reactionChips;
   const isTextOnly = post.files.length === 0 && hasPostText;
@@ -684,7 +684,7 @@ export function PostCard({
                     </a>
                   ))}
                 </div>
-                {imageFiles.length > 0 && !hasPostText && (
+                {imageFiles.length > 0 && !hasPostText && !reactionChips && (
                   <span className="post-time post-time--on-image">
                     {new Date(post.createdAt).toLocaleTimeString([], {
                       hour: "2-digit",
@@ -700,12 +700,14 @@ export function PostCard({
                   postId={post.id}
                   href={postishkaHref}
                 />
-                <span className="post-time post-time--bottom">
-                  {new Date(post.createdAt).toLocaleTimeString([], {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-                </span>
+                {!reactionChips && (
+                  <span className="post-time post-time--bottom">
+                    {new Date(post.createdAt).toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </span>
+                )}
               </>
             ) : hasPostText ? (
               <div className="post-content-row">
@@ -731,12 +733,14 @@ export function PostCard({
                 ) : (
                   <p className="post-text">{post.text}</p>
                 )}
-                <span className="post-time post-time--bottom">
-                  {new Date(post.createdAt).toLocaleTimeString([], {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-                </span>
+                {!reactionChips && (
+                  <span className="post-time post-time--bottom">
+                    {new Date(post.createdAt).toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </span>
+                )}
               </div>
             ) : null}
             {post.relatedPostId && !post.isPostishka && (
@@ -745,17 +749,32 @@ export function PostCard({
                 href={postishkaHref}
               />
             )}
-            {reactionsOverlay ?? reactionsInline}
-            {!post.isPostishka && imageFiles.length === 0 && !hasPostText && (
-              <span
-                className={`post-time post-time--bottom${videoFiles.length > 0 ? " post-time--below-video" : ""}`}
-              >
-                {new Date(post.createdAt).toLocaleTimeString([], {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
-              </span>
+            {reactionChips ? (
+              <div className="post-reactions-footer">
+                {reactionsOverlay ?? reactionsInline}
+                <span className="post-time post-time--bottom">
+                  {new Date(post.createdAt).toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </span>
+              </div>
+            ) : (
+              reactionsOverlay ?? reactionsInline
             )}
+            {!reactionChips &&
+              !post.isPostishka &&
+              imageFiles.length === 0 &&
+              !hasPostText && (
+                <span
+                  className={`post-time post-time--bottom${videoFiles.length > 0 ? " post-time--below-video" : ""}`}
+                >
+                  {new Date(post.createdAt).toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </span>
+              )}
             {commentsVisible && (
               <div className="post-comments">
                 {post.comments.map((comment) => (
