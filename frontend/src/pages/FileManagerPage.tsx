@@ -54,29 +54,6 @@ function fileKind(file: filesApi.UserFile): FileKind {
   return "other";
 }
 
-async function runLimited<T>(
-  items: T[],
-  limit: number,
-  task: (item: T) => Promise<unknown>,
-) {
-  let next = 0;
-  let failed = 0;
-  const worker = async () => {
-    while (next < items.length) {
-      const item = items[next++];
-      try {
-        await task(item);
-      } catch {
-        failed += 1;
-      }
-    }
-  };
-  await Promise.all(
-    Array.from({ length: Math.min(limit, items.length) }, worker),
-  );
-  return failed;
-}
-
 function InlineRenameInput({
   value,
   onChange,
@@ -894,17 +871,10 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
         await filesApi.deleteFile(action.item.id);
       } else {
         setIsBulkBusy(true);
-        const failed = await runLimited(action.ids, 6, (id) =>
-          filesApi.deleteFile(id),
-        );
-        setIsBulkBusy(false);
-        if (failed > 0) {
-          await reload();
-          notify(
-            "error",
-            `Не удалось удалить файлов: ${failed} из ${action.ids.length}`,
-          );
-          return;
+        try {
+          await filesApi.deleteFiles(action.ids);
+        } finally {
+          setIsBulkBusy(false);
         }
         setSelected(new Set());
       }
@@ -932,18 +902,17 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
     if (isBulkBusy || selected.size === 0) return;
     const ids = [...selected];
     setIsBulkBusy(true);
-    const failed = await runLimited(ids, 6, (id) =>
-      filesApi.setFileVisibility(id, accessLevel),
-    );
-    await reload();
-    setIsBulkBusy(false);
-    if (failed === 0) {
+    try {
+      await filesApi.setFilesVisibility(ids, accessLevel);
+      await reload();
       clearSelection();
-    } else {
+    } catch (reason: any) {
       notify(
         "error",
-        `Не удалось изменить доступ у файлов: ${failed} из ${ids.length}`,
+        reason?.response?.data?.message ?? "Не удалось изменить доступ у файлов",
       );
+    } finally {
+      setIsBulkBusy(false);
     }
   }
   function bulkDownload() {

@@ -16,6 +16,17 @@ public class UpdateFileVisibilityRequest
     public FileAccessLevel AccessLevel { get; set; }
 }
 
+public class BulkFileVisibilityRequest
+{
+    public List<Guid> FileIds { get; set; } = [];
+    public FileAccessLevel AccessLevel { get; set; }
+}
+
+public class BulkDeleteFilesRequest
+{
+    public List<Guid> FileIds { get; set; } = [];
+}
+
 public class UpdateFolderVisibilityRequest
 {
     public FileAccessLevel AccessLevel { get; set; }

@@ -12,13 +12,16 @@ public sealed class ImagePreviewBackgroundService : BackgroundService
     private readonly ConcurrentDictionary<string, byte> _completed = new(StringComparer.Ordinal);
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<ImagePreviewBackgroundService> _logger;
+    private readonly IConfiguration _configuration;
 
     public ImagePreviewBackgroundService(
         IServiceScopeFactory scopeFactory,
-        ILogger<ImagePreviewBackgroundService> logger)
+        ILogger<ImagePreviewBackgroundService> logger,
+        IConfiguration configuration)
     {
         _scopeFactory = scopeFactory;
         _logger = logger;
+        _configuration = configuration;
     }
 
     public void Enqueue(string storageKey, string contentType)
@@ -37,13 +40,28 @@ public sealed class ImagePreviewBackgroundService : BackgroundService
     {
         await EnqueueMissingPreviewsAsync(stoppingToken);
 
+        var workerCount = Math.Clamp(
+            _configuration.GetValue<int?>("PreviewWorker:Concurrency") ?? 2,
+            1,
+            4);
+        var workers = Enumerable.Range(0, workerCount)
+            .Select(_ => ProcessQueueAsync(stoppingToken));
+        await Task.WhenAll(workers);
+    }
+
+    private async Task ProcessQueueAsync(CancellationToken stoppingToken)
+    {
         await foreach (var job in _jobs.Reader.ReadAllAsync(stoppingToken))
         {
             try
             {
                 using var scope = _scopeFactory.CreateScope();
                 var storage = scope.ServiceProvider.GetRequiredService<IStorageService>();
-                var preview = await storage.CreateImagePreviewAsync(job.StorageKey, job.ContentType);
+                var preview = job.ContentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase)
+                    ? null
+                    : await storage.CreateImagePreviewAsync(job.StorageKey, job.ContentType);
+                if (job.ContentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase))
+                    await storage.CreateVideoPreviewAsync(job.StorageKey, job.ContentType);
                 if (preview is { Width: > 0, Height: > 0 })
                 {
                     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -103,9 +121,23 @@ public sealed class ImagePreviewBackgroundService : BackgroundService
                 .Select(file => new { file.StorageKey, file.ContentType })
                 .ToListAsync(cancellationToken);
 
+            var videoFiles = await db.UserFiles
+                .AsNoTracking()
+                .Where(file => file.ContentType.StartsWith("video/"))
+                .Select(file => new { file.StorageKey, file.ContentType })
+                .ToListAsync(cancellationToken);
+
             foreach (var file in files.Concat(postFiles).Concat(archivedFiles).DistinctBy(file => file.StorageKey))
             {
                 if (!existingPreviews.Contains(storage.GetPreviewObjectKey(file.StorageKey)))
+                    Enqueue(file.StorageKey, file.ContentType);
+            }
+
+            var existingVideoPreviews = (await storage.ListObjectKeysAsync("previews/"))
+                .ToHashSet(StringComparer.Ordinal);
+            foreach (var file in videoFiles.DistinctBy(file => file.StorageKey))
+            {
+                if (!existingVideoPreviews.Contains(storage.GetVideoPreviewObjectKey(file.StorageKey)))
                     Enqueue(file.StorageKey, file.ContentType);
             }
         }

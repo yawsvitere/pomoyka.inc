@@ -189,6 +189,18 @@ export async function deleteFolder(id: string) {
 export async function deleteFile(id: string) {
   await apiClient.delete(`/api/files/library/${id}`);
 }
+export async function deleteFiles(ids: string[]) {
+  await apiClient.delete("/api/files/library", { data: { fileIds: ids } });
+}
+export async function setFilesVisibility(
+  ids: string[],
+  accessLevel: FileAccessLevel,
+) {
+  await apiClient.patch("/api/files/library/visibility", {
+    fileIds: ids,
+    accessLevel,
+  });
+}
 export async function getGallery(id: string) {
   return (
     await apiClient.get<{

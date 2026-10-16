@@ -14,6 +14,7 @@ public interface IStorageService
     string GetPublicObjectUrl(string objectKey);
 
     Task DeleteObjectAsync(string objectKey);
+    Task DeleteObjectsAsync(IEnumerable<string> objectKeys);
     Task CopyObjectAsync(string sourceKey, string destinationKey);
     Task UploadObjectAsync(string objectKey, Stream content, string contentType);
     Task<ImagePreviewResult?> CreateImagePreviewAsync(string sourceKey, string contentType);
@@ -94,6 +95,23 @@ public class StorageService : IStorageService
     public async Task DeleteObjectAsync(string objectKey)
     {
         await _s3.DeleteObjectAsync(_bucket, objectKey);
+    }
+
+    public async Task DeleteObjectsAsync(IEnumerable<string> objectKeys)
+    {
+        foreach (var batch in objectKeys.Distinct(StringComparer.Ordinal).Chunk(1000))
+        {
+            if (batch.Length == 0) continue;
+            var response = await _s3.DeleteObjectsAsync(new DeleteObjectsRequest
+            {
+                BucketName = _bucket,
+                Objects = batch.Select(key => new KeyVersion { Key = key }).ToList(),
+                Quiet = true
+            });
+            if (response.DeleteErrors.Count > 0)
+                throw new InvalidOperationException(
+                    $"Не удалось удалить {response.DeleteErrors.Count} объектов из хранилища.");
+        }
     }
 
     public async Task CopyObjectAsync(string sourceKey, string destinationKey)

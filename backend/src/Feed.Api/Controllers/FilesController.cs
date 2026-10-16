@@ -326,14 +326,13 @@ public class FilesController : ControllerBase
         await using var stream = file.OpenReadStream();
         var storageKey = BuildLibraryStorageKey(userId.Value, folderId, fileName);
         await _storage.UploadObjectAsync(storageKey, stream, file.ContentType);
-        if (file.ContentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase))
-            await _storage.CreateVideoPreviewAsync(storageKey, file.ContentType);
         var userFile = new UserFile { OwnerId = userId.Value, FolderId = folderId, FileName = fileName, StorageKey = storageKey, ContentType = file.ContentType, SizeBytes = file.Length, Width = width, Height = height, AccessLevel = folder?.AccessLevel ?? FileAccessLevel.Authenticated };
         _db.UserFiles.Add(userFile);
         await _db.SaveChangesAsync();
         if (folderId.HasValue)
             await _ogImageCache.InvalidateAsync(OgImageStorageCache.GalleryKey(folderId.Value));
-        if (file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+        if (file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase) ||
+            file.ContentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase))
             _imagePreviewBackgroundService.Enqueue(storageKey, file.ContentType);
         return Ok(ToUserFileDto(userFile, folder));
     }
@@ -342,25 +341,15 @@ public class FilesController : ControllerBase
     public async Task<IActionResult> DeleteFolder(Guid id)
     {
         var userId = GetUserId();
-        var folder = await _db.FileFolders.Include(x => x.Files)
+        var folder = await _db.FileFolders
             .FirstOrDefaultAsync(x => x.Id == id && x.OwnerId == userId);
         if (folder == null) return NotFound();
 
-        foreach (var file in folder.Files)
-        {
-            if (!IsContentAddressedKey(file.StorageKey))
-            {
-                await _storage.DeleteObjectAsync(file.StorageKey);
-                if (file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
-                    await _storage.DeleteObjectAsync(_storage.GetPreviewObjectKey(file.StorageKey));
-                else if (file.ContentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase))
-                    await _storage.DeleteObjectAsync(_storage.GetVideoPreviewObjectKey(file.StorageKey));
-            }
-        }
-
-        _db.UserFiles.RemoveRange(folder.Files);
-        _db.FileFolders.Remove(folder);
-        await _db.SaveChangesAsync();
+        var files = await _db.UserFiles.AsNoTracking().Where(file => file.FolderId == id)
+            .Select(file => new FileStorageObject(file.StorageKey, file.ContentType, null)).ToListAsync();
+        await _storage.DeleteObjectsAsync(GetDeletableObjectKeys(files));
+        await _db.UserFiles.Where(file => file.FolderId == id).ExecuteDeleteAsync();
+        await _db.FileFolders.Where(item => item.Id == id).ExecuteDeleteAsync();
         await _ogImageCache.InvalidateAsync(OgImageStorageCache.GalleryKey(id));
         return NoContent();
     }
@@ -376,6 +365,44 @@ public class FilesController : ControllerBase
         if (file.FolderId.HasValue)
             await _ogImageCache.InvalidateAsync(OgImageStorageCache.GalleryKey(file.FolderId.Value));
         return Ok(ToUserFileDto(file));
+    }
+
+    [HttpPatch("library/visibility")]
+    public async Task<IActionResult> UpdateVisibilityBulk(BulkFileVisibilityRequest request)
+    {
+        var userId = GetUserId();
+        if (userId == null) return Unauthorized();
+        var ids = request.FileIds.Distinct().ToArray();
+        if (ids.Length == 0) return NoContent();
+
+        var folderIds = await _db.UserFiles.AsNoTracking()
+            .Where(file => file.OwnerId == userId && ids.Contains(file.Id) && file.FolderId != null)
+            .Select(file => file.FolderId!.Value).Distinct().ToListAsync();
+        await _db.UserFiles.Where(file => file.OwnerId == userId && ids.Contains(file.Id))
+            .ExecuteUpdateAsync(setters => setters.SetProperty(file => file.AccessLevel, request.AccessLevel));
+        foreach (var folderId in folderIds)
+            await _ogImageCache.InvalidateAsync(OgImageStorageCache.GalleryKey(folderId));
+        return NoContent();
+    }
+
+    [HttpDelete("library")]
+    public async Task<IActionResult> DeleteLibraryFiles(BulkDeleteFilesRequest request)
+    {
+        var userId = GetUserId();
+        if (userId == null) return Unauthorized();
+        var ids = request.FileIds.Distinct().ToArray();
+        if (ids.Length == 0) return NoContent();
+
+        var files = await _db.UserFiles.AsNoTracking()
+            .Where(file => file.OwnerId == userId && ids.Contains(file.Id))
+            .Select(file => new FileStorageObject(file.StorageKey, file.ContentType, file.FolderId))
+            .ToListAsync();
+        await _storage.DeleteObjectsAsync(GetDeletableObjectKeys(files));
+        await _db.UserFiles.Where(file => file.OwnerId == userId && ids.Contains(file.Id))
+            .ExecuteDeleteAsync();
+        foreach (var folderId in files.Where(file => file.FolderId.HasValue).Select(file => file.FolderId!.Value).Distinct())
+            await _ogImageCache.InvalidateAsync(OgImageStorageCache.GalleryKey(folderId));
+        return NoContent();
     }
 
     [HttpPatch("library/{id:guid}/name")]
@@ -444,11 +471,13 @@ public class FilesController : ControllerBase
     public async Task<IActionResult> UpdateFolderVisibility(Guid id, UpdateFolderVisibilityRequest request)
     {
         var userId = GetUserId();
-        var folder = await _db.FileFolders.Include(x => x.Files).FirstOrDefaultAsync(x => x.Id == id && x.OwnerId == userId);
+        var folder = await _db.FileFolders.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Id == id && x.OwnerId == userId);
         if (folder == null) return NotFound();
-        folder.AccessLevel = request.AccessLevel;
-        foreach (var file in folder.Files) file.AccessLevel = request.AccessLevel;
-        await _db.SaveChangesAsync();
+        await _db.FileFolders.Where(item => item.Id == id)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(item => item.AccessLevel, request.AccessLevel));
+        await _db.UserFiles.Where(file => file.FolderId == id)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(file => file.AccessLevel, request.AccessLevel));
         await _ogImageCache.InvalidateAsync(OgImageStorageCache.GalleryKey(id));
         return NoContent();
     }
@@ -1851,6 +1880,21 @@ public class FilesController : ControllerBase
 
     private static string BuildLibraryStorageKey(Guid userId, Guid? folderId, string fileName) =>
         $"library/{userId:D}/{(folderId.HasValue ? $"folders/{folderId.Value:D}" : "root")}/{Guid.NewGuid():N}_{fileName}";
+
+    private static IEnumerable<string> GetDeletableObjectKeys(IEnumerable<FileStorageObject> files)
+    {
+        foreach (var file in files)
+        {
+            if (IsContentAddressedKey(file.StorageKey)) continue;
+            yield return file.StorageKey;
+            if (file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+                yield return $"previews/{file.StorageKey}.webp";
+            else if (file.ContentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase))
+                yield return $"previews/{file.StorageKey}.mp4";
+        }
+    }
+
+    private sealed record FileStorageObject(string StorageKey, string ContentType, Guid? FolderId = null);
 
     private bool CanAccess(FileAccessLevel accessLevel, Guid ownerId)
     {
