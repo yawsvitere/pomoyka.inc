@@ -6,105 +6,210 @@
   z-index: 20;
 
   --composer-accent: var(--color-accent);
-  --composer-accent-soft: rgba(232, 232, 232, 0.1);
+  --composer-accent-soft: rgba(232, 232, 232, 0.08);
   --composer-accent-strong: var(--color-text);
   --composer-accent-ink: var(--color-bg);
+  --composer-radius: calc(var(--radius-md, 12px) + 6px);
 }
 
-.composer-dock > .feed-heading {
-  justify-content: flex-end;
-}
-
-.composer-dock > .feed-heading .btn {
-  text-decoration: none;
-  transition: color 0.15s ease;
-}
-
-.composer-dock > .feed-heading .btn:hover {
-  color: var(--composer-accent-strong);
+.composer-dock::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  top: -28px;
+  right: -100vw;
+  bottom: -12px;
+  left: -100vw;
+  background: linear-gradient(to top, var(--color-bg) 35%, transparent 100%);
+  pointer-events: none;
 }
 
 .composer {
   position: relative;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
   margin: 0;
   border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-md);
+  border-radius: var(--composer-radius);
   background: var(--color-surface-deep);
-  box-shadow: 0 8px 24px var(--color-shadow);
+  box-shadow: 0 10px 30px var(--color-shadow);
   transition:
     border-color 0.2s ease,
     box-shadow 0.2s ease;
 }
 
-.composer::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 12px;
-  right: 12px;
-  height: 1px;
-
-  opacity: 0.35;
-  transition: opacity 0.25s ease;
-}
-
 .composer:focus-within {
   border-color: var(--composer-accent);
   box-shadow:
-    0 8px 28px var(--color-shadow),
-    0 0 0 3px var(--composer-accent-soft);
+    0 10px 32px var(--color-shadow),
+    0 0 0 4px var(--composer-accent-soft);
 }
 
-.composer:focus-within::before {
-  opacity: 0.9;
+.composer-previews {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 12px 12px 0;
+  overflow-x: auto;
+  list-style: none;
+  scrollbar-width: none;
 }
 
-.composer.is-drag-active {
-  border-color: var(--composer-accent);
-  border-style: dashed;
-  box-shadow:
-    0 8px 28px var(--color-shadow),
-    0 0 0 3px var(--composer-accent-soft);
+.composer-previews::-webkit-scrollbar {
+  display: none;
 }
 
-.textarea-composer {
-  max-height: 120px;
-  padding: 14px 16px 10px;
-  background: transparent;
+.composer-preview {
+  position: relative;
+  flex: 0 0 auto;
+  width: 72px;
+  height: 72px;
+  overflow: hidden;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 12px;
+  background: var(--color-bg);
+  animation: composer-pop 0.18s ease-out both;
+}
+
+.composer-preview img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.composer-preview-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 100%;
+  height: 100%;
+  padding: 8px 6px;
+  color: var(--color-text-dim);
+  text-align: center;
+}
+
+.composer-preview-meta strong {
+  color: var(--color-text);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.composer-preview-meta span {
+  display: -webkit-box;
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 10px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.composer-preview button {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
   border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.62);
+  color: #fff;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+  transition:
+    background 0.15s ease,
+    transform 0.12s ease;
+}
+
+.composer-preview button svg {
+  width: 10px;
+  height: 10px;
+}
+
+.composer-preview button:hover:not(:disabled) {
+  background: #ef4444;
+  transform: scale(1.08);
+}
+
+.composer-preview button:focus-visible {
+  outline: 2px solid var(--composer-accent-strong);
+  outline-offset: 1px;
+}
+
+.composer-preview button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.composer .textarea-composer {
+  display: block;
+  width: 100%;
+  min-height: 0;
+  max-height: 140px;
+  margin: 0;
+  padding: 14px 16px 6px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: inherit;
+  line-height: 1.5;
   resize: none;
   outline: none;
-  color: inherit;
 }
 
-.textarea-composer::placeholder {
-  transition: color 0.15s ease;
+.composer .textarea-composer::placeholder {
+  color: var(--color-text-dim);
+  opacity: 0.8;
+  transition:
+    color 0.15s ease,
+    opacity 0.15s ease;
 }
 
 .composer:focus-within .textarea-composer::placeholder {
   color: var(--composer-accent-strong);
+  opacity: 0.55;
 }
 
 .composer-footer {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
-  padding: 8px 10px;
-  border-top: 2px solid var(--color-border-subtle);
+  padding: 6px 10px 10px;
 }
 
-.composer-footer .btn-secondary {
+.composer-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.composer-tool {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 36px;
-  padding: 0 14px;
-  border: 1px solid var(--color-border-subtle);
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid transparent;
   border-radius: 999px;
   background: transparent;
   color: var(--color-text-dim);
+  font: inherit;
+  font-size: 13px;
+  text-decoration: none;
+  white-space: nowrap;
   cursor: pointer;
   transition:
     border-color 0.15s ease,
@@ -112,107 +217,154 @@
     background 0.15s ease;
 }
 
-.composer-footer .btn-secondary:hover {
-  border-color: var(--composer-accent);
-  color: var(--composer-accent-strong);
+.composer-tool:hover {
+  border-color: var(--color-border-subtle);
   background: var(--composer-accent-soft);
+  color: var(--composer-accent-strong);
 }
 
-.composer-footer .btn-secondary .icon {
+.composer-tool:focus-within,
+.composer-tool:focus-visible {
+  outline: 2px solid var(--composer-accent);
+  outline-offset: 2px;
+}
+
+.composer-tool .icon {
   width: 16px;
   height: 16px;
   flex-shrink: 0;
 }
 
-.composer-footer .btn-primary {
-  height: 36px;
-  padding: 0 12px;
-  border: none;
+.composer-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  opacity: 0;
+}
+
+.composer-hint {
+  margin-left: auto;
+  color: var(--color-text-dim);
+  font-size: 12px;
+  opacity: 0;
+  transform: translateX(4px);
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.composer:focus-within .composer-hint {
+  opacity: 0.6;
+  transform: none;
+}
+
+.composer-send {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+
+  padding: 8px;
+  border: 1px solid transparent;
   border-radius: 999px;
-  background: linear-gradient(
-    180deg,
-    var(--composer-accent-strong),
-    var(--composer-accent)
-  );
+  background: var(--composer-accent-strong);
   color: var(--composer-accent-ink);
+  font: inherit;
+  font-size: 13px;
   font-weight: 600;
   letter-spacing: 0.01em;
   cursor: pointer;
   transition:
     transform 0.12s ease,
     box-shadow 0.15s ease,
-    opacity 0.15s ease;
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
 }
 
-.composer-footer .btn-primary:hover:not(:disabled) {
-  box-shadow: 0 4px 14px var(--composer-accent-soft);
-  transform: translateY(-1px);
-}
-
-.composer-footer .btn-primary:active:not(:disabled) {
-  transform: translateY(0) scale(0.97);
-}
-
-.composer-footer .btn-primary:disabled {
-  opacity: 0.6;
-  cursor: default;
-  transform: none;
-}
-
-.composer-selected-files {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin: 0;
-  padding: 0 12px 10px;
-  list-style: none;
-}
-
-.composer-file-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  max-width: 180px;
-  padding: 4px 6px 4px 10px;
-  border: 1px solid var(--color-border-subtle);
-  border-radius: 999px;
-  background: var(--color-surface-deep);
-  color: var(--color-text-dim);
-  font-size: 12px;
-}
-
-.composer-file-chip span {
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.composer-file-chip button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+.composer-send .icon {
   width: 16px;
   height: 16px;
   flex-shrink: 0;
-  padding: 0;
-  border: none;
-  border-radius: 50%;
+}
+
+.composer-send:hover:not(:disabled) {
+  box-shadow: 0 6px 18px var(--composer-accent-soft);
+  transform: translateY(-1px);
+}
+
+.composer-send:active:not(:disabled) {
+  transform: translateY(0) scale(0.97);
+}
+
+.composer-send:focus-visible {
+  outline: 2px solid var(--composer-accent);
+  outline-offset: 2px;
+}
+
+.composer-send:disabled {
+  border-color: var(--color-border-subtle);
   background: transparent;
   color: var(--color-text-dim);
-  cursor: pointer;
-  transition:
-    background 0.15s ease,
-    color 0.15s ease;
+  cursor: default;
+  opacity: 0.7;
 }
 
-.composer-file-chip button:hover {
-  background: var(--composer-accent-soft);
+.composer-send[aria-busy="true"] {
+  background: var(--composer-accent-strong);
+  color: var(--composer-accent-ink);
+  opacity: 0.85;
+}
+
+.composer-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: composer-spin 0.7s linear infinite;
+}
+
+.composer-drop {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  border: 2px dashed var(--composer-accent);
+  border-radius: inherit;
+  background: color-mix(in srgb, var(--color-surface-deep) 88%, transparent);
   color: var(--composer-accent-strong);
+  font-size: 14px;
+  font-weight: 600;
+  opacity: 0;
+  pointer-events: none;
+  backdrop-filter: blur(6px);
+  transition: opacity 0.15s ease;
 }
 
-.composer-file-chip button svg {
-  width: 10px;
-  height: 10px;
+.composer.is-drag-active .composer-drop {
+  opacity: 1;
+}
+
+@keyframes composer-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes composer-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 @media (max-width: 700px) {
@@ -222,48 +374,61 @@
     left: 8px;
   }
 
-  .composer-footer {
-    gap: 6px;
-    padding: 6px 8px;
-  }
-
-  .composer-footer .btn-secondary {
-    padding: 0;
-    width: 36px;
-    height: 36px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-  }
-
-  .composer-footer .btn-secondary .attach-label {
+  .composer-hint,
+  .composer-tool-label,
+  .composer-send-label {
     display: none;
   }
 
-  .composer-footer .btn-secondary .icon {
-    margin: 0;
+  .composer-footer {
+    gap: 6px;
+    padding: 4px 8px 8px;
   }
 
-  .composer-footer .btn-primary {
-    flex-shrink: 0;
-    padding: 0 16px;
-    white-space: nowrap;
+  .composer-tool {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    justify-content: center;
+    border-color: var(--color-border-subtle);
   }
 
-  .textarea-composer {
-    max-height: 96px;
-    padding: 12px 14px 8px;
+  .composer-send {
+    width: 40px;
+    height: 36px;
+    margin-left: auto;
+    padding: 0;
+  }
+
+  .composer .textarea-composer {
+    max-height: 104px;
+    padding: 12px 14px 4px;
+  }
+
+  .composer-previews {
+    padding: 10px 10px 0;
+  }
+
+  .composer-preview {
+    width: 60px;
+    height: 60px;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .composer,
-  .composer::before,
-  .composer-footer .btn-primary,
-  .composer-footer .btn-secondary,
-  .composer-file-chip button,
-  .composer-dock > .feed-heading .btn {
+  .composer-preview,
+  .composer-preview button,
+  .composer-tool,
+  .composer-hint,
+  .composer-send,
+  .composer-drop,
+  .composer .textarea-composer::placeholder {
+    animation: none;
     transition: none;
+  }
+
+  .composer-spinner {
+    animation-duration: 1.6s;
   }
 }

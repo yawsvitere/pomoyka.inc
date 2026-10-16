@@ -279,47 +279,50 @@ export function FeedPage() {
     };
   }, []);
 
-  const loadFeed = useCallback(async (page: number) => {
-    const isFirstPage = page === 1;
-    if (isFirstPage) {
-      setIsLoading(true);
-    }
-    try {
-      const data = await postsApi.getFeed(page, FEED_PAGE_SIZE);
+  const loadFeed = useCallback(
+    async (page: number) => {
+      const isFirstPage = page === 1;
+      if (isFirstPage) {
+        setIsLoading(true);
+      }
+      try {
+        const data = await postsApi.getFeed(page, FEED_PAGE_SIZE);
 
-      if (!Array.isArray(data) || data.length === 0) {
+        if (!Array.isArray(data) || data.length === 0) {
+          setHasMore(false);
+          if (isFirstPage) {
+            setPosts([]);
+          }
+          return;
+        }
+
+        setPosts((currentPosts) =>
+          isFirstPage
+            ? sortPostsNewestFirst(data)
+            : sortPostsNewestFirst([
+                ...currentPosts,
+                ...data.filter(
+                  (post) => !currentPosts.some((item) => item.id === post.id),
+                ),
+              ]),
+        );
+        nextPageRef.current = page + 1;
+        setHasMore(data.length >= FEED_PAGE_SIZE);
+      } catch (err) {
+        console.error("Error loading feed:", err);
         setHasMore(false);
         if (isFirstPage) {
           setPosts([]);
         }
-        return;
+        notify("error", "Не удалось загрузить ленту");
+      } finally {
+        if (isFirstPage) {
+          setIsLoading(false);
+        }
       }
-
-      setPosts((currentPosts) =>
-        isFirstPage
-          ? sortPostsNewestFirst(data)
-          : sortPostsNewestFirst([
-              ...currentPosts,
-              ...data.filter(
-                (post) => !currentPosts.some((item) => item.id === post.id),
-              ),
-            ]),
-      );
-      nextPageRef.current = page + 1;
-      setHasMore(data.length >= FEED_PAGE_SIZE);
-    } catch (err) {
-      console.error("Error loading feed:", err);
-      setHasMore(false);
-      if (isFirstPage) {
-        setPosts([]);
-      }
-      notify("error", "Не удалось загрузить ленту");
-    } finally {
-      if (isFirstPage) {
-        setIsLoading(false);
-      }
-    }
-  }, [notify]);
+    },
+    [notify],
+  );
 
   const handleLoadMore = useCallback(
     () => loadFeed(nextPageRef.current),
@@ -342,7 +345,6 @@ export function FeedPage() {
           )
         : sortPostsNewestFirst([...currentPosts, postForFeed]),
     );
-    notify("success", "Пост опубликован");
   }
 
   async function handleCommentSubmit(
