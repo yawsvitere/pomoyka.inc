@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -7,11 +8,24 @@ import {
   type TouchEvent,
 } from "react";
 import { createPortal } from "react-dom";
-import twemoji from "@twemoji/api";
 import type { Post } from "../../api/types";
 import { getBrowserFileUrl } from "../../utils/fileUrl";
 import { AlertDialog } from "../ui/AlertDialog";
 import "../../styles/components/context-menu.css";
+import heartAnimated from "../../assets/telemoji/animated/2764.webp";
+import strawberryAnimated from "../../assets/telemoji/animated/1f353.webp";
+import cryingAnimated from "../../assets/telemoji/animated/1f62d.webp";
+import vomitingAnimated from "../../assets/telemoji/animated/1f92e.webp";
+import pleadingAnimated from "../../assets/telemoji/animated/1f97a.webp";
+import coldAnimated from "../../assets/telemoji/animated/1f976.webp";
+import coolAnimated from "../../assets/telemoji/animated/1f60e.webp";
+import heartStatic from "../../assets/telemoji/static/2764.webp";
+import strawberryStatic from "../../assets/telemoji/static/1f353.webp";
+import cryingStatic from "../../assets/telemoji/static/1f62d.webp";
+import vomitingStatic from "../../assets/telemoji/static/1f92e.webp";
+import pleadingStatic from "../../assets/telemoji/static/1f97a.webp";
+import coldStatic from "../../assets/telemoji/static/1f976.webp";
+import coolStatic from "../../assets/telemoji/static/1f60e.webp";
 import copyIcon from "../../assets/icons/copy.svg";
 import deleteIcon from "../../assets/icons/delete.svg";
 import downloadIcon from "../../assets/icons/download.svg";
@@ -42,7 +56,28 @@ interface ContextMenuProps {
   triggerPlacement?: "center" | "left" | "right";
 }
 
-const reactionOptions = ["🍓", "😭", "🤮", "🥺", "🥶", "😎"];
+const reactionOptions = ["❤️", "🍓", "😭", "🤮", "🥺", "🥶", "😎"];
+const REACTION_ANIMATION_DURATION_MS = 3000;
+
+const animatedReactionIcons: Record<string, string> = {
+  "2764": heartAnimated,
+  "1F353": strawberryAnimated,
+  "1F62D": cryingAnimated,
+  "1F92E": vomitingAnimated,
+  "1F97A": pleadingAnimated,
+  "1F976": coldAnimated,
+  "1F60E": coolAnimated,
+};
+
+const staticReactionIcons: Record<string, string> = {
+  "2764": heartStatic,
+  "1F353": strawberryStatic,
+  "1F62D": cryingStatic,
+  "1F92E": vomitingStatic,
+  "1F97A": pleadingStatic,
+  "1F976": coldStatic,
+  "1F60E": coolStatic,
+};
 
 let activeMenuCloser: (() => void) | null = null;
 
@@ -59,15 +94,119 @@ function MenuIcon({ src }: { src: string }) {
   );
 }
 
-export function ReactionIcon({ emoji }: { emoji: string }) {
-  const codePoint = twemoji.convert.toCodePoint(emoji);
+export function ReactionIcon({
+  emoji,
+  animated = true,
+}: {
+  emoji: string;
+  animated?: boolean;
+}) {
+  const codePoints = Array.from(emoji, (character) =>
+    character.codePointAt(0)?.toString(16).toUpperCase(),
+  )
+    .filter((codePoint) => codePoint !== "FE0F")
+    .join("_");
+  const imageUrl = animated
+    ? animatedReactionIcons[codePoints]
+    : staticReactionIcons[codePoints];
+
+  if (!imageUrl) {
+    return (
+      <span className="context-menu-reaction-fallback" aria-hidden="true">
+        {emoji}
+      </span>
+    );
+  }
+
   return (
     <img
       className="context-menu-reaction-icon"
-      src={`https://cdn.jsdelivr.net/gh/jdecked/twemoji@17.0.3/assets/svg/${codePoint}.svg`}
+      src={imageUrl}
       alt={emoji}
       draggable="false"
     />
+  );
+}
+
+interface ReactionChipProps {
+  emoji: string;
+  isMine: boolean;
+  animateTrigger?: number;
+  title?: string;
+  onClick?: () => void;
+  disabled?: boolean;
+  children?: ReactNode;
+}
+
+export function ReactionChip({
+  emoji,
+  isMine,
+  animateTrigger = 0,
+  title,
+  onClick,
+  disabled,
+  children,
+}: ReactionChipProps) {
+  const [isAnimating, setIsAnimating] = useState(animateTrigger > 0);
+  const animationTimerRef = useRef<number | null>(null);
+
+  useEffect(
+    () => () => {
+      if (animationTimerRef.current !== null) {
+        window.clearTimeout(animationTimerRef.current);
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (animateTrigger <= 0) return;
+
+    animationTimerRef.current = window.setTimeout(() => {
+      setIsAnimating(false);
+      animationTimerRef.current = null;
+    }, REACTION_ANIMATION_DURATION_MS);
+  }, [animateTrigger]);
+
+  const startAnimation = useCallback(() => {
+    if (animationTimerRef.current !== null) {
+      window.clearTimeout(animationTimerRef.current);
+    }
+    setIsAnimating(true);
+    animationTimerRef.current = window.setTimeout(() => {
+      setIsAnimating(false);
+      animationTimerRef.current = null;
+    }, REACTION_ANIMATION_DURATION_MS);
+  }, []);
+
+  const handleClick = () => {
+    if (animationTimerRef.current !== null) {
+      window.clearTimeout(animationTimerRef.current);
+      animationTimerRef.current = null;
+    }
+
+    if (isMine) {
+      setIsAnimating(false);
+    } else {
+      startAnimation();
+    }
+
+    onClick?.();
+  };
+
+  return (
+    <button
+      type="button"
+      className={`reaction-chip${isMine ? " is-active" : ""}`}
+      title={title}
+      onClick={handleClick}
+      disabled={disabled}
+    >
+      <span className="reaction-chip__emoji">
+        <ReactionIcon emoji={emoji} animated={isAnimating} />
+      </span>
+      {children}
+    </button>
   );
 }
 

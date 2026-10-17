@@ -16,7 +16,7 @@ namespace Feed.Api.Controllers;
 [Authorize]
 public class ReactionsController : ControllerBase
 {
-    private static readonly HashSet<string> AllowedEmojis = new() { "🍓", "😭", "🤮", "🥺", "🥶", "😎" };
+    private static readonly HashSet<string> AllowedEmojis = new() { "❤️","🍓", "😭", "🤮", "🥺", "🥶", "😎" };
     private readonly AppDbContext _db;
     private readonly IHubContext<FeedHub> _hub;
 

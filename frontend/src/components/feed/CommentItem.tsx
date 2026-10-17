@@ -1,9 +1,10 @@
+import { useRef, useState } from "react";
 import { PhotoView } from "react-photo-view";
 import type { Comment } from "../../api/types";
 import { AvatarMedia } from "../ui/AvatarMedia";
 import { getBrowserFileUrl } from "../../utils/fileUrl";
 import { useAuth } from "../../context/AuthContext";
-import { ContextMenu, ReactionIcon } from "./ContextMenu";
+import { ContextMenu, ReactionChip } from "./ContextMenu";
 import { AppLink } from "../ui/AppLink";
 
 interface CommentItemProps {
@@ -13,6 +14,24 @@ interface CommentItemProps {
 
 export function CommentItem({ comment, onReaction }: CommentItemProps) {
   const { user } = useAuth();
+  const [reactionAnimation, setReactionAnimation] = useState<{
+    emoji: string;
+    trigger: number;
+  } | null>(null);
+  const reactionAnimationCounterRef = useRef(0);
+  const handleContextReaction = (emoji: string) => {
+    const isAlreadyMine = comment.reactions.some(
+      (reaction) => reaction.emoji === emoji && reaction.user.id === user?.id,
+    );
+    if (!isAlreadyMine) {
+      reactionAnimationCounterRef.current += 1;
+      setReactionAnimation({
+        emoji,
+        trigger: reactionAnimationCounterRef.current,
+      });
+    }
+    onReaction?.(comment.id, emoji);
+  };
   const imageFiles =
     comment.files?.filter((file) => file.contentType.startsWith("image/")) ??
     [];
@@ -84,19 +103,21 @@ export function CommentItem({ comment, onReaction }: CommentItemProps) {
               const names = reactions
                 .map((reaction) => reaction.user.displayName)
                 .join(", ");
+              const animateTrigger =
+                reactionAnimation?.emoji === emoji
+                  ? reactionAnimation.trigger
+                  : 0;
 
               return (
-                <button
-                  key={emoji}
-                  type="button"
-                  className={`reaction-chip${isMine ? " is-active" : ""}`}
+                <ReactionChip
+                  key={`${emoji}:${animateTrigger}`}
+                  emoji={emoji}
+                  isMine={isMine}
+                  animateTrigger={animateTrigger}
                   title={names || emoji}
                   onClick={() => onReaction?.(comment.id, emoji)}
                   disabled={!user || !onReaction}
                 >
-                  <span className="reaction-chip__emoji">
-                    <ReactionIcon emoji={emoji} />
-                  </span>
                   {visibleReactions.length > 0 && (
                     <span className="reaction-chip__avatars">
                       {visibleReactions.map((reaction, index) => (
@@ -130,7 +151,7 @@ export function CommentItem({ comment, onReaction }: CommentItemProps) {
                       )}
                     </span>
                   )}
-                </button>
+                </ReactionChip>
               );
             })}
           </div>
@@ -140,7 +161,7 @@ export function CommentItem({ comment, onReaction }: CommentItemProps) {
   );
 
   return user && onReaction ? (
-    <ContextMenu onReaction={(emoji) => onReaction(comment.id, emoji)}>
+    <ContextMenu onReaction={handleContextReaction}>
       {commentContent}
     </ContextMenu>
   ) : (

@@ -17,7 +17,6 @@
     "@tiptap/extension-underline": "^3.31.3",
     "@tiptap/react": "^3.31.3",
     "@tiptap/starter-kit": "^3.31.3",
-    "@twemoji/api": "^17.0.3",
     "@videojs/react": "^10.0.0-beta.32",
     "axios": "^1.19.0",
     "react": "^19.2.8",

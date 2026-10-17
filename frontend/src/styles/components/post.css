@@ -629,6 +629,11 @@
   line-height: 1;
 }
 
+.reaction-chip__emoji .context-menu-reaction-icon {
+  width: 22px;
+  height: 22px;
+}
+
 .reaction-chip__avatars {
   display: flex;
   align-items: center;

@@ -14,10 +14,9 @@ import type { Post } from "../../api/types";
 import { apiClient } from "../../api/client";
 import { CommentItem } from "./CommentItem";
 import { CommentComposer } from "./CommentComposer";
-import { ContextMenu } from "./ContextMenu";
+import { ContextMenu, ReactionChip } from "./ContextMenu";
 import { useAuth } from "../../context/AuthContext";
 import { getBrowserFileUrl } from "../../utils/fileUrl";
-import { ReactionIcon } from "./ContextMenu";
 import { AvatarMedia } from "../ui/AvatarMedia";
 import { AppExternalLink, AppLink } from "../ui/AppLink";
 import { getPostishkaUrl } from "../../utils/postishkaUrl";
@@ -481,7 +480,26 @@ export function PostCard({
 }: PostCardProps) {
   const { user } = useAuth();
   const [localCommentsOpen, setLocalCommentsOpen] = useState(false);
+  const [reactionAnimation, setReactionAnimation] = useState<{
+    emoji: string;
+    trigger: number;
+  } | null>(null);
+  const reactionAnimationCounterRef = useRef(0);
   const isMine = isOwnPost || user?.id === post.author.id;
+  const handleContextReaction = (emoji: string) => {
+    const isAlreadyMine = post.reactions?.some(
+      (reaction) =>
+        reaction.emoji === emoji && reaction.user?.id === user?.id,
+    );
+    if (!isAlreadyMine) {
+      reactionAnimationCounterRef.current += 1;
+      setReactionAnimation({
+        emoji,
+        trigger: reactionAnimationCounterRef.current,
+      });
+    }
+    onReaction?.(emoji);
+  };
   const profileUrl = `/profile/${encodeURIComponent(post.author.displayName)}`;
   const commentsVisible = commentsOpen || localCommentsOpen;
   const author = post.author.avatarUrl ? (
@@ -534,18 +552,18 @@ export function PostCard({
             .map((reaction) => reaction.user?.displayName)
             .filter((name): name is string => Boolean(name))
             .join(", ");
+          const animateTrigger =
+            reactionAnimation?.emoji === emoji ? reactionAnimation.trigger : 0;
           return (
-            <button
-              type="button"
-              className={`reaction-chip${isMine ? " is-active" : ""}`}
-              key={emoji}
+            <ReactionChip
+              key={`${emoji}:${animateTrigger}`}
+              emoji={emoji}
+              isMine={isMine}
+              animateTrigger={animateTrigger}
               title={title || undefined}
               onClick={() => onReaction?.(emoji)}
               disabled={!onReaction}
             >
-              <span className="reaction-chip__emoji">
-                <ReactionIcon emoji={emoji} />
-              </span>
               {visibleReactions.length > 0 && (
                 <span className="reaction-chip__avatars">
                   {visibleReactions.map((reaction, index) => (
@@ -570,7 +588,7 @@ export function PostCard({
                   )}
                 </span>
               )}
-            </button>
+            </ReactionChip>
           );
         })
       : null;
@@ -601,7 +619,7 @@ export function PostCard({
       <ContextMenu
         post={post as Post}
         canDelete={user?.id === post.author.id || isAdmin()}
-        onReaction={onReaction}
+        onReaction={handleContextReaction}
         onComment={() => {
           if (onOpenComments) onOpenComments();
           else setLocalCommentsOpen(true);

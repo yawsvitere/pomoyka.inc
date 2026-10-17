@@ -73,9 +73,10 @@
 
 .context-menu-reaction-icon {
   display: block;
-  width: 22px;
-  height: 22px;
+  width: 28px;
+  height: 28px;
   object-fit: contain;
+  image-rendering: auto;
   pointer-events: none;
 }
 
