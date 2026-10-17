@@ -25,7 +25,7 @@ export interface PostFile {
   contentType: string;
   sizeBytes: number;
   downloadUrl: string;
-  previewUrl?: string;
+  previewUrl: string;
 }
 
 export interface Post {

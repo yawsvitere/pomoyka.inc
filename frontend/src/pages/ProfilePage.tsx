@@ -163,15 +163,16 @@ function ProfileFileRow({ file }: { file: filesApi.UserFile }) {
     }
   }
 
-  const previewUrl = isImageFile(file)
-    ? getBrowserFileUrl(file.previewUrl || file.downloadUrl)
-    : undefined;
+  const previewUrl =
+    isImageFile(file) && file.iconPreviewUrl
+      ? getBrowserFileUrl(file.iconPreviewUrl)
+      : undefined;
 
   return (
     <>
       <div className="fm-file-row profile-file-row">
         <span className="fm-file-name">
-          {isImageFile(file) ? (
+          {previewUrl ? (
             <img
               className="fm-image-preview"
               src={previewUrl}
@@ -181,7 +182,9 @@ function ProfileFileRow({ file }: { file: filesApi.UserFile }) {
             />
           ) : (
             <span className="fm-file-avatar">
-              {isVideoFile(file)
+              {isImageFile(file)
+                ? "IMG"
+                : isVideoFile(file)
                 ? "VID"
                 : isAudioFile(file)
                   ? "AUD"

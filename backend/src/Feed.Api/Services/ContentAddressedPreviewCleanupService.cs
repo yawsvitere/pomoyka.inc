@@ -78,9 +78,9 @@ public sealed class ContentAddressedPreviewCleanupService(
                 .Where(contentType =>
                     contentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase) ||
                     contentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase))
-                .Select(contentType => contentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)
-                    ? storage.GetPreviewObjectKey(file.StorageKey)
-                    : storage.GetVideoPreviewObjectKey(file.StorageKey))
+                .SelectMany(contentType => contentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)
+                    ? storage.GetImagePreviewObjectKeys(file.StorageKey)
+                    : new[] { storage.GetVideoPreviewObjectKey(file.StorageKey) })
                 .Prepend(file.StorageKey))
             .ToArray();
 

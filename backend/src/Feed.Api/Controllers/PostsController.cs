@@ -1080,7 +1080,7 @@ public class PostsController : ControllerBase
         SizeBytes = file.SizeBytes,
         DownloadUrl = $"{Request.Scheme}://{Request.Host}/api/files/post/{file.Id}/download",
         PreviewUrl = file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)
-            ? _storage.GetPublicObjectUrl(_storage.GetPreviewObjectKey(file.StorageKey))
+            ? _storage.GetPublicObjectUrl(_storage.GetFeedPreviewObjectKey(file.StorageKey))
             : file.ContentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase)
                 ? _storage.GetPublicObjectUrl(_storage.GetVideoPreviewObjectKey(file.StorageKey))
             : string.Empty

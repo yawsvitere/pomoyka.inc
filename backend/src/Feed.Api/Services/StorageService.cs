@@ -21,7 +21,10 @@ public interface IStorageService
     Task<string?> CreateVideoPreviewAsync(string sourceKey, string contentType);
     Task<string> CreateAvatarVideoAsync(Stream content, int? cropX = null, int? cropY = null, int? cropWidth = null, int? cropHeight = null);
     Task<string> UploadDeduplicatedObjectAsync(Stream content, string contentType);
+    string GetIconPreviewObjectKey(string objectKey);
     string GetPreviewObjectKey(string objectKey);
+    string GetFeedPreviewObjectKey(string objectKey);
+    IEnumerable<string> GetImagePreviewObjectKeys(string objectKey);
     string GetVideoPreviewObjectKey(string objectKey);
     Task<GetObjectResponse> GetObjectAsync(
         string objectKey,
@@ -137,7 +140,22 @@ public class StorageService : IStorageService
         });
     }
 
-    public string GetPreviewObjectKey(string objectKey) => $"previews/{objectKey}.webp";
+    public string GetIconPreviewObjectKey(string objectKey) =>
+        $"previews/30x30/{objectKey}.webp";
+
+    public string GetPreviewObjectKey(string objectKey) =>
+        $"previews/360/{objectKey}.webp";
+
+    public string GetFeedPreviewObjectKey(string objectKey) =>
+        $"previews/865/{objectKey}.webp";
+
+    public IEnumerable<string> GetImagePreviewObjectKeys(string objectKey) =>
+        new[]
+        {
+            GetIconPreviewObjectKey(objectKey),
+            GetPreviewObjectKey(objectKey),
+            GetFeedPreviewObjectKey(objectKey)
+        };
 
     public string GetVideoPreviewObjectKey(string objectKey) => $"previews/{objectKey}.mp4";
 
@@ -145,16 +163,6 @@ public class StorageService : IStorageService
     {
         if (!contentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
             return null;
-
-        var previewKey = GetPreviewObjectKey(sourceKey);
-        try
-        {
-            await _s3.GetObjectMetadataAsync(_bucket, previewKey);
-            return new ImagePreviewResult(previewKey, 0, 0);
-        }
-        catch (AmazonS3Exception exception) when (exception.StatusCode == System.Net.HttpStatusCode.NotFound)
-        {
-        }
 
         int originalWidth;
         int originalHeight;
@@ -169,17 +177,39 @@ public class StorageService : IStorageService
         var escapedKey = string.Join("/", sourceKey.Split('/').Select(Uri.EscapeDataString));
         var sourceUrl = Uri.EscapeDataString(
             $"{_imgproxySourceEndpoint}/{Uri.EscapeDataString(_bucket)}/{escapedKey}");
-        var imgproxyUrl = $"{_imgproxyEndpoint.TrimEnd('/')}/insecure/rs:fit:360:0/q:82/plain/{sourceUrl}@webp";
-        using var response = await _httpClient.GetAsync(
-            imgproxyUrl,
-            HttpCompletionOption.ResponseHeadersRead);
-        response.EnsureSuccessStatusCode();
+        var previewVariants = new[]
+        {
+            (Key: GetIconPreviewObjectKey(sourceKey), Resize: "fill:30:30"),
+            (Key: GetPreviewObjectKey(sourceKey), Resize: "fit:360:0"),
+            (Key: GetFeedPreviewObjectKey(sourceKey), Resize: "fit:865:0")
+        };
+        foreach (var (previewKey, resize) in previewVariants)
+        {
+            try
+            {
+                await _s3.GetObjectMetadataAsync(_bucket, previewKey);
+                continue;
+            }
+            catch (AmazonS3Exception exception) when (
+                exception.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+            }
 
-        await using var preview = new MemoryStream();
-        await response.Content.CopyToAsync(preview);
-        preview.Position = 0;
-        await UploadObjectAsync(previewKey, preview, "image/webp");
-        return new ImagePreviewResult(previewKey, originalWidth, originalHeight);
+            var imgproxyUrl =
+                $"{_imgproxyEndpoint.TrimEnd('/')}/insecure/rs:{resize}/q:82/plain/{sourceUrl}@webp";
+            using var response = await _httpClient.GetAsync(
+                imgproxyUrl,
+                HttpCompletionOption.ResponseHeadersRead);
+            response.EnsureSuccessStatusCode();
+
+            await using var preview = new MemoryStream();
+            await response.Content.CopyToAsync(preview);
+            preview.Position = 0;
+            await UploadObjectAsync(previewKey, preview, "image/webp");
+        }
+
+        var feedPreviewKey = GetPreviewObjectKey(sourceKey);
+        return new ImagePreviewResult(feedPreviewKey, originalWidth, originalHeight);
     }
 
     public async Task<string?> CreateVideoPreviewAsync(string sourceKey, string contentType)

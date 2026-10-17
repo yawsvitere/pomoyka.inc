@@ -172,7 +172,10 @@ public class FilesController : ControllerBase
                 ? GetPreviewUrl(x.StorageKey, isVideo: false)
                 : (x.ContentType ?? string.Empty).StartsWith("video/", StringComparison.OrdinalIgnoreCase)
                     ? GetPreviewUrl(x.StorageKey, isVideo: true)
-                    : null)));
+                    : null,
+            (x.ContentType ?? string.Empty).StartsWith("image/", StringComparison.OrdinalIgnoreCase)
+                ? _storage.GetPublicObjectUrl(_storage.GetIconPreviewObjectKey(x.StorageKey))
+                : null)));
 
         return Ok(new { folders, files });
     }
@@ -820,7 +823,7 @@ public class FilesController : ControllerBase
             foreach (var file in files)
             {
                 var image = await TryLoadGalleryImageAsync(
-                    _storage.GetPreviewObjectKey(file.StorageKey),
+                    _storage.GetFeedPreviewObjectKey(file.StorageKey),
                     HttpContext.RequestAborted)
                     ?? await TryLoadGalleryImageAsync(file.StorageKey, HttpContext.RequestAborted);
                 if (image == null)
@@ -1230,7 +1233,7 @@ public class FilesController : ControllerBase
         {
             await _storage.DeleteObjectAsync(file.StorageKey);
             if (file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
-                await _storage.DeleteObjectAsync(_storage.GetPreviewObjectKey(file.StorageKey));
+                await _storage.DeleteObjectsAsync(_storage.GetImagePreviewObjectKeys(file.StorageKey));
             else if (file.ContentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase))
                 await _storage.DeleteObjectAsync(_storage.GetVideoPreviewObjectKey(file.StorageKey));
         }
@@ -1255,7 +1258,7 @@ public class FilesController : ControllerBase
         {
             await _storage.DeleteObjectAsync(file.StorageKey);
             if (file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
-                await _storage.DeleteObjectAsync(_storage.GetPreviewObjectKey(file.StorageKey));
+                await _storage.DeleteObjectsAsync(_storage.GetImagePreviewObjectKeys(file.StorageKey));
             else if (file.ContentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase))
                 await _storage.DeleteObjectAsync(_storage.GetVideoPreviewObjectKey(file.StorageKey));
         }
@@ -1312,7 +1315,7 @@ public class FilesController : ControllerBase
             SizeBytes = postFile.SizeBytes,
             DownloadUrl = $"{Request.Scheme}://{Request.Host}/api/files/post/{postFile.Id}/download",
             PreviewUrl = postFile.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)
-                ? _storage.GetPublicObjectUrl(_storage.GetPreviewObjectKey(postFile.StorageKey))
+                ? _storage.GetPublicObjectUrl(_storage.GetFeedPreviewObjectKey(postFile.StorageKey))
                 : postFile.ContentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase)
                     ? _storage.GetPublicObjectUrl(_storage.GetVideoPreviewObjectKey(postFile.StorageKey))
                 : string.Empty
@@ -1925,16 +1928,17 @@ public class FilesController : ControllerBase
     private static string BuildLibraryStorageKey(Guid userId, Guid? folderId, string fileName) =>
         $"library/{userId:D}/{(folderId.HasValue ? $"folders/{folderId.Value:D}" : "root")}/{Guid.NewGuid():N}_{fileName}";
 
-    private static IEnumerable<string> GetDeletableObjectKeys(IEnumerable<FileStorageObject> files)
+    private IEnumerable<string> GetDeletableObjectKeys(IEnumerable<FileStorageObject> files)
     {
         foreach (var file in files)
         {
             if (IsContentAddressedKey(file.StorageKey)) continue;
             yield return file.StorageKey;
             if (file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
-                yield return $"previews/{file.StorageKey}.webp";
+                foreach (var previewKey in _storage.GetImagePreviewObjectKeys(file.StorageKey))
+                    yield return previewKey;
             else if (file.ContentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase))
-                yield return $"previews/{file.StorageKey}.mp4";
+                yield return _storage.GetVideoPreviewObjectKey(file.StorageKey);
         }
     }
 
@@ -1975,5 +1979,8 @@ public class FilesController : ControllerBase
             BuildDownloadUrl(file.Id),
             (file.ContentType ?? string.Empty).StartsWith("image/", StringComparison.OrdinalIgnoreCase)
                 ? GetPreviewUrl(file.StorageKey, isVideo: false)
+                : null,
+            (file.ContentType ?? string.Empty).StartsWith("image/", StringComparison.OrdinalIgnoreCase)
+                ? _storage.GetPublicObjectUrl(_storage.GetIconPreviewObjectKey(file.StorageKey))
                 : null);
 }

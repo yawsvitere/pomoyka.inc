@@ -121,6 +121,11 @@ public sealed class ImagePreviewBackgroundService : BackgroundService
                 .Where(file => file.ContentType.StartsWith("image/"))
                 .Select(file => new { file.StorageKey, file.ContentType })
                 .ToListAsync(cancellationToken);
+            var commentFiles = await db.CommentFiles
+                .AsNoTracking()
+                .Where(file => file.ContentType.StartsWith("image/"))
+                .Select(file => new { file.StorageKey, file.ContentType })
+                .ToListAsync(cancellationToken);
             var archivedFiles = await db.ArchivedPostFiles
                 .AsNoTracking()
                 .Where(file => file.ContentType.StartsWith("image/"))
@@ -133,9 +138,11 @@ public sealed class ImagePreviewBackgroundService : BackgroundService
                 .Select(file => new { file.StorageKey, file.ContentType })
                 .ToListAsync(cancellationToken);
 
-            foreach (var file in files.Concat(postFiles).Concat(archivedFiles).DistinctBy(file => file.StorageKey))
+            foreach (var file in files.Concat(postFiles).Concat(commentFiles).Concat(archivedFiles)
+                .DistinctBy(file => file.StorageKey))
             {
-                if (!existingPreviews.Contains(storage.GetPreviewObjectKey(file.StorageKey)))
+                if (storage.GetImagePreviewObjectKeys(file.StorageKey)
+                    .Any(previewKey => !existingPreviews.Contains(previewKey)))
                     Enqueue(file.StorageKey, file.ContentType);
             }
 

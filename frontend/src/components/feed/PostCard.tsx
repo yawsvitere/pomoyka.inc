@@ -354,7 +354,7 @@ function PostImageGallery({ files }: { files: Post["files"] }) {
         <PhotoView src={fileUrl}>
           <img
             className="post-image"
-            src={fileUrl}
+            src={getBrowserFileUrl(item.file.previewUrl)}
             alt={item.file.fileName}
             onLoad={(event) => handleImageLoad(event, item.file.id)}
             style={

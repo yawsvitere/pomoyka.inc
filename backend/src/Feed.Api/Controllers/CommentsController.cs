@@ -119,7 +119,8 @@ public class CommentsController : ControllerBase
             if (!file.StorageKey.StartsWith("sha256/", StringComparison.Ordinal))
             {
                 await _storage.DeleteObjectAsync(file.StorageKey);
-                await _storage.DeleteObjectAsync(_storage.GetPreviewObjectKey(file.StorageKey));
+                await _storage.DeleteObjectsAsync(
+                    _storage.GetImagePreviewObjectKeys(file.StorageKey));
             }
         }
         _db.PostComments.Remove(comment);

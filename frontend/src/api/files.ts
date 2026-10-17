@@ -23,6 +23,7 @@ export interface UserFile {
   uploadedAt: string;
   downloadUrl: string;
   previewUrl?: string | null;
+  iconPreviewUrl?: string | null;
 }
 export interface Library {
   folders: FileFolder[];

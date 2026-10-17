@@ -216,10 +216,10 @@ function ImageFilePreview({
 
   const content = (
     <>
-      {file.previewUrl ? (
+      {file.iconPreviewUrl ? (
         <img
           className="fm-image-preview"
-          src={file.previewUrl}
+          src={file.iconPreviewUrl}
           alt=""
           loading="lazy"
         />

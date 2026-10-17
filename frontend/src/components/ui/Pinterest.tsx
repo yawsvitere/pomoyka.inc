@@ -131,8 +131,10 @@ function PinterestCard({
 }) {
   const isVideo = image.contentType.startsWith("video/");
   const mediaUrl = getBrowserFileUrl(image.url);
-  const previewUrl = getBrowserFileUrl(image.previewUrl ?? image.url);
-  const [videoSource, setVideoSource] = useState(previewUrl);
+  const previewUrl = image.previewUrl
+    ? getBrowserFileUrl(image.previewUrl)
+    : null;
+  const [videoSource, setVideoSource] = useState(previewUrl ?? mediaUrl);
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [aspectRatio, setAspectRatio] = useState(
@@ -203,7 +205,7 @@ function PinterestCard({
     }
     setHasError(true);
   };
-  const imgSrc = !isVideo && isVisible ? previewUrl : undefined;
+  const imgSrc = !isVideo && isVisible ? previewUrl ?? undefined : undefined;
 
   return (
     <div
