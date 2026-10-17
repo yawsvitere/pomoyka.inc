@@ -5,8 +5,8 @@ import {
   useRef,
   useState,
 } from "react";
-import { Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
+import { AppLink } from "../ui/AppLink";
 
 interface FeedComposerProps {
   onSubmit: (text: string, files: File[]) => Promise<void>;
@@ -417,7 +417,7 @@ export function FeedComposer({
                 />
               </label>
 
-              <Link className="composer-tool" to="/posts/new">
+              <AppLink className="composer-tool" to="/posts/new">
                 <svg
                   className="icon"
                   viewBox="0 0 24 24"
@@ -431,7 +431,7 @@ export function FeedComposer({
                   <path d="M12 5v14M5 12h14" />
                 </svg>
                 <span className="composer-tool-label">Постишка</span>
-              </Link>
+              </AppLink>
             </div>
 
             <span className="composer-hint" aria-hidden="true">

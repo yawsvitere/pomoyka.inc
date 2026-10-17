@@ -1,5 +1,5 @@
-import { Link } from "react-router-dom";
 import type { FeedBanner, Post, PostFile } from "../../api/types";
+import { AppExternalLink, AppLink } from "../ui/AppLink";
 import { getBrowserFileUrl } from "../../utils/fileUrl";
 import { getPostishkaUrl } from "../../utils/postishkaUrl";
 import { PostishkaCoverImage } from "./PostishkaCoverImage";
@@ -29,11 +29,9 @@ function getRecentFiles(posts: Post[]) {
 
 function FileLink({ file, post }: { file: PostFile; post: Post }) {
   return (
-    <a
+    <AppExternalLink
       className="feed-sidebar-file"
       href={getBrowserFileUrl(file.downloadUrl)}
-      target="_blank"
-      rel="noreferrer"
       title={file.fileName}
     >
       <span className="feed-sidebar-file-icon">↗</span>
@@ -41,7 +39,7 @@ function FileLink({ file, post }: { file: PostFile; post: Post }) {
         <strong>{file.fileName}</strong>
         <small>{post.author.displayName}</small>
       </span>
-    </a>
+    </AppExternalLink>
   );
 }
 
@@ -54,7 +52,7 @@ export function FeedSidebar({ posts, postishki, banners }: FeedSidebarProps) {
       {banners.length > 0 && (
         <div className="feed-sidebar-banners" aria-label="Баннеры">
           {banners.map((banner) => (
-            <Link
+            <AppLink
               className="feed-sidebar-banner"
               key={banner.id}
               to={getPostishkaUrl({
@@ -74,7 +72,7 @@ export function FeedSidebar({ posts, postishki, banners }: FeedSidebarProps) {
                 <strong>{banner.title}</strong>
                 <small>{formatDate(banner.createdAt)}</small>
               </span>
-            </Link>
+            </AppLink>
           ))}
         </div>
       )}
@@ -86,7 +84,7 @@ export function FeedSidebar({ posts, postishki, banners }: FeedSidebarProps) {
         {recentPostishki.length > 0 ? (
           <div className="feed-sidebar-posts">
             {recentPostishki.map((post) => (
-              <Link
+              <AppLink
                 className="feed-sidebar-post"
                 key={post.id}
                 to={getPostishkaUrl(post)}
@@ -95,7 +93,7 @@ export function FeedSidebar({ posts, postishki, banners }: FeedSidebarProps) {
                 <span>
                   {post.author.displayName} · {formatDate(post.createdAt)}
                 </span>
-              </Link>
+              </AppLink>
             ))}
           </div>
         ) : (

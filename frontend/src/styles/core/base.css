@@ -75,6 +75,18 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
+.app-link {
+  appearance: none;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+
 .avatar-media-fallback {
   display: grid;
   place-items: center;

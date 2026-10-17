@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import profileIcon from "../../assets/icons/profile.svg";
 import settingsIcon from "../../assets/icons/settings.svg";
@@ -8,6 +7,7 @@ import archiveIcon from "../../assets/icons/archive.svg";
 import pencilIcon from "../../assets/icons/pencil.svg";
 import storageIcon from "../../assets/icons/storage.svg";
 import { AvatarMedia } from "../ui/AvatarMedia";
+import { AppExternalLink, AppLink } from "../ui/AppLink";
 import { getBrowserFileUrl } from "../../utils/fileUrl";
 
 function isAdmin() {
@@ -130,27 +130,27 @@ export function MobileHamburgerMenu({
             </div>
 
             <div className="mobile-menu-section">
-              <Link
+              <AppLink
                 to={profileUrl}
                 className="mobile-menu-item"
                 onClick={handleNavigation}
               >
                 <img src={profileIcon} alt="" aria-hidden="true" />
                 <span>Профиль</span>
-              </Link>
-              <Link
+              </AppLink>
+              <AppLink
                 to="/settings"
                 className="mobile-menu-item"
                 onClick={handleNavigation}
               >
                 <img src={settingsIcon} alt="" aria-hidden="true" />
                 <span>Настройки</span>
-              </Link>
+              </AppLink>
             </div>
 
             <div className="mobile-menu-section">
               {navigationItems.map((item) => (
-                <Link
+                <AppLink
                   key={item.path}
                   to={item.path}
                   className="mobile-menu-item"
@@ -158,10 +158,10 @@ export function MobileHamburgerMenu({
                 >
                   <img src={item.icon} alt="" aria-hidden="true" />
                   <span>{item.label}</span>
-                </Link>
+                </AppLink>
               ))}
               {isAdmin() && (
-                <Link
+                <AppLink
                   to="/admin"
                   className="mobile-menu-item"
                   onClick={handleNavigation}
@@ -171,27 +171,19 @@ export function MobileHamburgerMenu({
                     aria-hidden="true"
                   ></span>
                   <span>Админка</span>
-                </Link>
+                </AppLink>
               )}
             </div>
 
             <footer className="mobile-menu-footer">
               <div className="mobile-menu-footer-row">
-                <a
-                  href="https://github.com/yawsvitere/pomoyka.inc/blob/main/README.md"
-                  target="_blank"
-                  rel="noreferrer"
-                >
+                <AppExternalLink href="https://github.com/yawsvitere/pomoyka.inc/blob/main/README.md">
                   правила
-                </a>
+                </AppExternalLink>
                 <span aria-hidden="true">/</span>
-                <a
-                  href="https://github.com/yawsvitere/pomoyka.inc/blob/main/README.md"
-                  target="_blank"
-                  rel="noreferrer"
-                >
+                <AppExternalLink href="https://github.com/yawsvitere/pomoyka.inc/blob/main/README.md">
                   справка
-                </a>
+                </AppExternalLink>
               </div>
               <div className="mobile-menu-footer-row">
                 <button
@@ -204,26 +196,22 @@ export function MobileHamburgerMenu({
                   выйти
                 </button>
                 <span aria-hidden="true">/</span>
-                <a
-                  href="https://github.com/yawsvitere/pomoyka.inc"
-                  target="_blank"
-                  rel="noreferrer"
-                >
+                <AppExternalLink href="https://github.com/yawsvitere/pomoyka.inc">
                   github
-                </a>
+                </AppExternalLink>
               </div>
               <div className="mobile-menu-footer-row">
                 <button type="button" onClick={onWelcomeOpen}>
                   о приложении
                 </button>
               </div>
-              <Link
+              <AppLink
                 className="mobile-menu-footer-logo"
                 to="/"
                 onClick={handleNavigation}
               >
                 помойка.inc
-              </Link>
+              </AppLink>
             </footer>
           </nav>
         </div>,

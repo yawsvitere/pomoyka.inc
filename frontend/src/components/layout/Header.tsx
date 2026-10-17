@@ -1,8 +1,8 @@
-import { Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { MobileHamburgerMenu } from "./MobileHamburgerMenu";
 import { Search } from "./Search";
 import { AvatarMedia } from "../ui/AvatarMedia";
+import { AppLink } from "../ui/AppLink";
 import { getBrowserFileUrl } from "../../utils/fileUrl";
 
 export function Header({ onWelcomeOpen }: { onWelcomeOpen: () => void }) {
@@ -11,14 +11,14 @@ export function Header({ onWelcomeOpen }: { onWelcomeOpen: () => void }) {
 
   return (
     <header className="top-header">
-      <Link
+      <AppLink
         className="top-header-logo top-header-logo-mobile"
         to="/"
         aria-label="На главную"
       >
         <img src="/trash.svg" alt="" aria-hidden="true" />
         <span>помойка.inc</span>
-      </Link>
+      </AppLink>
       <Search />
 
       {/* Мобильное меню */}
@@ -27,10 +27,10 @@ export function Header({ onWelcomeOpen }: { onWelcomeOpen: () => void }) {
       </div>
 
       <div className="top-header-desktop top-header-actions">
-        <Link className="top-header-settings" to="/settings">
+        <AppLink className="top-header-settings" to="/settings">
           Настройки
-        </Link>
-        <Link
+        </AppLink>
+        <AppLink
           className="top-header-avatar-button"
           to={profileUrl}
           aria-label="Открыть профиль"
@@ -46,7 +46,7 @@ export function Header({ onWelcomeOpen }: { onWelcomeOpen: () => void }) {
               {user?.displayName?.charAt(0).toUpperCase()}
             </span>
           )}
-        </Link>
+        </AppLink>
       </div>
     </header>
   );

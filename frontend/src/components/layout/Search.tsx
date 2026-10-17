@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
 import { getPostishkaUrl } from "../../utils/postishkaUrl";
 import * as searchApi from "../../api/search";
 import searchIcon from "../../assets/icons/search.svg";
 import { AvatarMedia } from "../ui/AvatarMedia";
+import { AppLink } from "../ui/AppLink";
 import { getBrowserFileUrl } from "../../utils/fileUrl";
 import "../../styles/components/search.css";
 
@@ -74,7 +74,7 @@ export function Search() {
           {results.users.length > 0 && (
             <SearchGroup title="Пользователи">
               {results.users.map((user) => (
-                <Link
+                <AppLink
                   key={user.id}
                   to={`/profile/${encodeURIComponent(user.displayName)}`}
                   onClick={() => setIsOpen(false)}
@@ -92,14 +92,14 @@ export function Search() {
                   <span className="top-header-search-user-name">
                     {user.displayName}
                   </span>
-                </Link>
+                </AppLink>
               ))}
             </SearchGroup>
           )}
           {results.files.length > 0 && (
             <SearchGroup title="Файлы">
               {results.files.map((file) => (
-                <Link
+                <AppLink
                   key={`${file.kind}-${file.id}`}
                   to={
                     file.kind === "user" ? "/files" : `/files/file/${file.id}`
@@ -107,27 +107,27 @@ export function Search() {
                   onClick={() => setIsOpen(false)}
                 >
                   {file.fileName}
-                </Link>
+                </AppLink>
               ))}
             </SearchGroup>
           )}
           {results.dates.length > 0 && (
             <SearchGroup title="Даты">
               {results.dates.map((date) => (
-                <Link
+                <AppLink
                   key={date.date}
                   to={`/archive/${date.date.replaceAll("-", "/")}`}
                   onClick={() => setIsOpen(false)}
                 >
                   {formatDate(date.date)}
-                </Link>
+                </AppLink>
               ))}
             </SearchGroup>
           )}
           {results.posts.length > 0 && (
             <SearchGroup title="Постишки">
               {results.posts.map((post) => (
-                <Link
+                <AppLink
                   key={post.id}
                   to={
                     post.isPostishka
@@ -137,7 +137,7 @@ export function Search() {
                   onClick={() => setIsOpen(false)}
                 >
                   {post.title || post.text?.slice(0, 70) || "Без текста"}
-                </Link>
+                </AppLink>
               ))}
             </SearchGroup>
           )}

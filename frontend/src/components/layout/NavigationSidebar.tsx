@@ -1,9 +1,9 @@
-import { Link, NavLink } from "react-router-dom";
 import archiveIcon from "../../assets/icons/archive.svg";
 import homeIcon from "../../assets/icons/home.svg";
 import pencilIcon from "../../assets/icons/pencil.svg";
 import storageIcon from "../../assets/icons/storage.svg";
 import { useAuth } from "../../context/AuthContext";
+import { AppExternalLink, AppLink } from "../ui/AppLink";
 
 function isAdmin() {
   const token = localStorage.getItem("token");
@@ -46,7 +46,7 @@ export function NavigationSidebar({
     >
       <nav className="navigation-sidebar-list">
         {navigationItems.map((item) => (
-          <NavLink
+          <AppLink
             key={item.path}
             className={({ isActive }) =>
               `navigation-sidebar-link${isActive ? " active" : ""}`
@@ -61,62 +61,50 @@ export function NavigationSidebar({
               aria-hidden="true"
             />
             <span>{item.label}</span>
-          </NavLink>
+          </AppLink>
         ))}
         {isAdmin() && (
-          <NavLink
+          <AppLink
             className={({ isActive }) =>
               `navigation-sidebar-link${isActive ? " active" : ""}`
             }
             to="/admin"
           >
             <span>Админка</span>
-          </NavLink>
+          </AppLink>
         )}
       </nav>
       <div className="navigation-sidebar-footer">
         <div className="navigation-sidebar-footer-row">
-          <a
-            href="https://github.com/yawsvitere/pomoyka.inc/blob/main/README.md"
-            target="_blank"
-            rel="noreferrer"
-          >
+          <AppExternalLink href="https://github.com/yawsvitere/pomoyka.inc/blob/main/README.md">
             правила
-          </a>
+          </AppExternalLink>
           <span aria-hidden="true">/</span>
-          <a
-            href="https://github.com/yawsvitere/pomoyka.inc/blob/main/README.md"
-            target="_blank"
-            rel="noreferrer"
-          >
+          <AppExternalLink href="https://github.com/yawsvitere/pomoyka.inc/blob/main/README.md">
             справка
-          </a>
+          </AppExternalLink>
         </div>
         <div className="navigation-sidebar-footer-row">
           <button type="button" onClick={logout}>
             выйти
           </button>
           <span aria-hidden="true">/</span>
-          <a
-            href="https://github.com/yawsvitere/pomoyka.inc"
-            target="_blank"
-            rel="noreferrer"
-          >
+          <AppExternalLink href="https://github.com/yawsvitere/pomoyka.inc">
             github
-          </a>
+          </AppExternalLink>
         </div>
         <div className="navigation-sidebar-footer-row">
           <button type="button" onClick={onWelcomeOpen}>
             о приложении
           </button>
         </div>
-        <Link
+        <AppLink
           className="navigation-sidebar-logo"
           to="/"
           aria-label="На главную"
         >
           <span>помойка.inc</span>
-        </Link>
+        </AppLink>
       </div>
     </aside>
   );

@@ -320,13 +320,15 @@
   -webkit-line-clamp: 3;
 }
 
-.article-preview a {
+.article-preview a,
+.article-preview .app-link {
   color: var(--color-text-faint);
   font-size: 12.5px;
   text-decoration: none;
 }
 
-.article-preview a:hover {
+.article-preview a:hover,
+.article-preview .app-link:hover {
   color: var(--color-text);
 }
 

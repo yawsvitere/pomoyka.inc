@@ -1,10 +1,10 @@
-import { Link } from "react-router-dom";
 import { PhotoView } from "react-photo-view";
 import type { Comment } from "../../api/types";
 import { AvatarMedia } from "../ui/AvatarMedia";
 import { getBrowserFileUrl } from "../../utils/fileUrl";
 import { useAuth } from "../../context/AuthContext";
 import { ContextMenu, ReactionIcon } from "./ContextMenu";
+import { AppLink } from "../ui/AppLink";
 
 interface CommentItemProps {
   comment: Comment;
@@ -33,13 +33,13 @@ export function CommentItem({ comment, onReaction }: CommentItemProps) {
       <div className="comment-content">
         <div className="comment-bubble">
           <div className="comment-header">
-            <Link
+            <AppLink
               className="comment-author-link"
               to={`/profile/${encodeURIComponent(comment.author.displayName)}`}
               style={{ color: comment.author.nicknameColor ?? "#4f46e5" }}
             >
               {comment.author.displayName}
-            </Link>
+            </AppLink>
             <time className="comment-time" dateTime={comment.createdAt}>
               {new Date(comment.createdAt).toLocaleTimeString([], {
                 hour: "2-digit",

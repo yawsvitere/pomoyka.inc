@@ -5,7 +5,6 @@ import {
   type CSSProperties,
   type SyntheticEvent,
 } from "react";
-import { Link } from "react-router-dom";
 import { Audio, AudioPlayer, AudioSkin } from "@videojs/react/audio";
 import "@videojs/react/audio/skin.css";
 import { Video, VideoPlayer, VideoSkin } from "@videojs/react/video";
@@ -20,6 +19,7 @@ import { useAuth } from "../../context/AuthContext";
 import { getBrowserFileUrl } from "../../utils/fileUrl";
 import { ReactionIcon } from "./ContextMenu";
 import { AvatarMedia } from "../ui/AvatarMedia";
+import { AppExternalLink, AppLink } from "../ui/AppLink";
 import { getPostishkaUrl } from "../../utils/postishkaUrl";
 export type PostCardData = Omit<Post, "reactionCounts" | "reactions"> &
   Partial<Pick<Post, "reactionCounts" | "reactions">>;
@@ -129,7 +129,7 @@ function PostishkaOgPreview({
   }, [postId]);
 
   return (
-    <Link className="postishka-og-preview" to={href}>
+    <AppLink className="postishka-og-preview" to={href}>
       {imageUrl ? (
         <img src={imageUrl} alt="" loading="lazy" />
       ) : (
@@ -143,7 +143,7 @@ function PostishkaOgPreview({
           <span className="postishka-og-arrow" aria-hidden="true">→</span>
         </span>
       </span>
-    </Link>
+    </AppLink>
   );
 }
 
@@ -613,9 +613,9 @@ export function PostCard({
         >
           {showAuthor ? (
             authorLinks ? (
-              <Link className="post-avatar-link" to={profileUrl}>
+              <AppLink className="post-avatar-link" to={profileUrl}>
                 {author}
-              </Link>
+              </AppLink>
             ) : (
               <span className="post-avatar-link">{author}</span>
             )
@@ -629,13 +629,13 @@ export function PostCard({
               <div className="post-meta">
                 <div>
                   {authorLinks ? (
-                    <Link
+                    <AppLink
                       className="post-author"
                       to={profileUrl}
                       style={{ color: authorColor }}
                     >
                       {post.author.displayName}
-                    </Link>
+                    </AppLink>
                   ) : (
                     <span
                       className="post-author"
@@ -669,19 +669,17 @@ export function PostCard({
                     </div>
                   ))}
                   {otherFiles.map((file) => (
-                    <a
+                    <AppExternalLink
                       className="post-file"
                       key={file.id}
                       href={getBrowserFileUrl(file.downloadUrl)}
-                      target="_blank"
-                      rel="noreferrer"
                     >
                       <span className="file-icon">📄</span>
                       <span>
                         <strong>{file.fileName}</strong>
                         <small>{Math.round(file.sizeBytes / 1024)} KB</small>
                       </span>
-                    </a>
+                    </AppExternalLink>
                   ))}
                 </div>
                 {imageFiles.length > 0 && !hasPostText && !reactionChips && (
@@ -719,7 +717,7 @@ export function PostCard({
                         ?.text ?? ""}
                     </p>
                     {showArticleLink && (
-                      <Link
+                      <AppLink
                         to={
                           post.isPostishka
                             ? getPostishkaUrl(post)
@@ -727,7 +725,7 @@ export function PostCard({
                         }
                       >
                         Читать далее →
-                      </Link>
+                      </AppLink>
                     )}
                   </div>
                 ) : (
