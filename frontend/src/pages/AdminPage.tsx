@@ -1,15 +1,53 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import type { ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ClipboardEvent, ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { AvatarMedia } from "../components/ui/AvatarMedia";
 import "../styles/pages/admin.css";
 import * as adminApi from "../api/admin";
 import type { AdminUser } from "../api/admin";
-import type { FeedBanner, Post } from "../api/types";
+import type { FeedBanner, FeedPoll, Post } from "../api/types";
 import { getBrowserFileUrl } from "../utils/fileUrl";
 
 const GB = 1024 * 1024 * 1024;
 const QUOTA_PRESETS = [1, 2, 5, 10];
+
+const POLL_MAX_OPTIONS = 30;
+const POLL_DURATIONS = [
+  { label: "1 ч", hours: 1 },
+  { label: "6 ч", hours: 6 },
+  { label: "24 ч", hours: 24 },
+  { label: "3 дня", hours: 72 },
+  { label: "7 дней", hours: 168 },
+];
+
+type PostFilter = "all" | "on" | "off";
+
+const POST_FILTERS: { id: PostFilter; label: string }[] = [
+  { id: "all", label: "Все" },
+  { id: "on", label: "На главной" },
+  { id: "off", label: "Не выбраны" },
+];
+
+const IMAGE_FILE_RE = /\.(png|jpe?g|gif|webp|avif)$/i;
+
+function postThumbUrl(post: Post) {
+  const file = post.files.find((item) => IMAGE_FILE_RE.test(item.fileName));
+  return file ? getBrowserFileUrl(file.downloadUrl) : null;
+}
+
+function postLabel(post: Post) {
+  return post.title?.trim() || post.text?.trim() || "Без названия";
+}
+
+function endDateIn(hours: number) {
+  const date = new Date(Date.now() + hours * 60 * 60 * 1000);
+  date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
+  return date.toISOString().slice(0, 16);
+}
+
+function defaultPollEndDate() {
+  return endDateIn(24);
+}
 
 function formatBytes(bytes: number) {
   if (!bytes) return "0 Б";
@@ -84,6 +122,43 @@ const PlusIcon = () => (
     <path d="M8 3v10M3 8h10" />
   </svg>
 );
+const CheckIcon = () => (
+  <svg {...iconProps} strokeWidth={2}>
+    <path d="m3.5 8.5 3 3 6-7" />
+  </svg>
+);
+const CloseIcon = () => (
+  <svg {...iconProps}>
+    <path d="m4 4 8 8M12 4l-8 8" />
+  </svg>
+);
+
+function SwitchRow({
+  checked,
+  onChange,
+  title,
+  text,
+}: {
+  checked: boolean;
+  onChange: (value: boolean) => void;
+  title: string;
+  text: string;
+}) {
+  return (
+    <label className={`admin-switch ${checked ? "is-on" : ""}`}>
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+      />
+      <span className="admin-switch__track" aria-hidden="true" />
+      <span className="admin-switch__text">
+        <strong>{title}</strong>
+        <span>{text}</span>
+      </span>
+    </label>
+  );
+}
 
 type ToastItem = { id: number; kind: "success" | "error"; message: string };
 
@@ -288,6 +363,7 @@ export function AdminPage() {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [codes, setCodes] = useState<adminApi.AdminInviteCode[]>([]);
   const [banners, setBanners] = useState<FeedBanner[]>([]);
+  const [polls, setPolls] = useState<FeedPoll[]>([]);
   const [postishki, setPostishki] = useState<Post[]>([]);
   const [storageSummary, setStorageSummary] =
     useState<adminApi.AdminStorageSummary | null>(null);
@@ -299,6 +375,18 @@ export function AdminPage() {
   const [storageQuery, setStorageQuery] = useState("");
   const [userQuery, setUserQuery] = useState("");
   const [postQuery, setPostQuery] = useState("");
+  const [postFilter, setPostFilter] = useState<PostFilter>("all");
+  const [togglingPostIds, setTogglingPostIds] = useState<string[]>([]);
+  const pollOptionsRef = useRef<HTMLDivElement>(null);
+  const focusNewPollOption = useRef(false);
+  const [pollQuestion, setPollQuestion] = useState("");
+  const [pollOptions, setPollOptions] = useState<string[]>(["", ""]);
+  const [pollEndsAt, setPollEndsAt] = useState(defaultPollEndDate);
+  const [pollIsAnonymous, setPollIsAnonymous] = useState(false);
+  const [pollAllowUserOptions, setPollAllowUserOptions] = useState(false);
+  const [pollAllowMultipleChoices, setPollAllowMultipleChoices] =
+    useState(false);
+  const [savingPoll, setSavingPoll] = useState(false);
 
   const [hours, setHours] = useState("24");
   const [inviteName, setInviteName] = useState("");
@@ -332,16 +420,18 @@ export function AdminPage() {
   async function load() {
     try {
       setLoadError(false);
-      const [u, c, b, p, s] = await Promise.all([
+      const [u, c, b, p, s, pollData] = await Promise.all([
         adminApi.getUsers(),
         adminApi.getInviteCodes(),
         adminApi.getBanners(),
         adminApi.getPostishki(),
         adminApi.getStorageSummary(),
+        adminApi.getPolls(),
       ]);
       setUsers(u);
       setCodes(c);
       setBanners(b);
+      setPolls(pollData);
       setPostishki(p);
       setStorageSummary(s);
       setTotalQuotaGb(formatGb(s.totalQuotaBytes));
@@ -510,12 +600,36 @@ export function AdminPage() {
     });
   }
 
-  const availablePosts = useMemo(() => {
+  const bannerByPostId = useMemo(
+    () => new Map(banners.map((banner) => [banner.postId, banner])),
+    [banners],
+  );
+
+  const orphanBanners = useMemo(
+    () =>
+      banners.filter(
+        (banner) => !postishki.some((post) => post.id === banner.postId),
+      ),
+    [banners, postishki],
+  );
+
+  const postCounts = useMemo(() => {
+    const on = postishki.filter((post) => bannerByPostId.has(post.id)).length;
+    return { all: postishki.length, on, off: postishki.length - on };
+  }, [postishki, bannerByPostId]);
+
+  const visiblePosts = useMemo(() => {
     const q = postQuery.trim().toLowerCase();
-    return postishki
-      .filter((post) => !banners.some((banner) => banner.postId === post.id))
-      .filter((post) => !q || (post.title || "").toLowerCase().includes(q));
-  }, [postishki, banners, postQuery]);
+    return postishki.filter((post) => {
+      const isOn = bannerByPostId.has(post.id);
+      if (postFilter === "on" && !isOn) return false;
+      if (postFilter === "off" && isOn) return false;
+      if (!q) return true;
+      return [post.title, post.text, post.author.displayName].some((value) =>
+        (value || "").toLowerCase().includes(q),
+      );
+    });
+  }, [postishki, bannerByPostId, postQuery, postFilter]);
 
   async function addBanner(postId: string) {
     try {
@@ -534,6 +648,117 @@ export function AdminPage() {
       notify("success", "Баннер убран");
     } catch {
       notify("error", "Не удалось удалить баннер");
+    }
+  }
+
+  async function togglePostBanner(post: Post) {
+    if (togglingPostIds.includes(post.id)) return;
+    setTogglingPostIds((current) => [...current, post.id]);
+    try {
+      const banner = bannerByPostId.get(post.id);
+      if (banner) await removeBanner(banner.id);
+      else await addBanner(post.id);
+    } finally {
+      setTogglingPostIds((current) => current.filter((id) => id !== post.id));
+    }
+  }
+
+  useEffect(() => {
+    if (!focusNewPollOption.current) return;
+    focusNewPollOption.current = false;
+    const inputs = pollOptionsRef.current?.querySelectorAll("input");
+    inputs?.[inputs.length - 1]?.focus();
+  }, [pollOptions.length]);
+
+  function addPollOption() {
+    if (pollOptions.length >= POLL_MAX_OPTIONS) return;
+    focusNewPollOption.current = true;
+    setPollOptions((current) => [...current, ""]);
+  }
+
+  function updatePollOption(index: number, value: string) {
+    setPollOptions((current) =>
+      current.map((option, i) => (i === index ? value : option)),
+    );
+  }
+
+  function removePollOption(index: number) {
+    setPollOptions((current) =>
+      current.length <= 2 ? current : current.filter((_, i) => i !== index),
+    );
+  }
+
+  function pastePollOptions(
+    index: number,
+    event: ClipboardEvent<HTMLInputElement>,
+  ) {
+    const text = event.clipboardData.getData("text");
+    if (!text.includes("\n")) return;
+    const lines = text
+      .split(/\r?\n/)
+      .map((line) => line.trim().slice(0, 120))
+      .filter(Boolean);
+    if (!lines.length) return;
+    event.preventDefault();
+    setPollOptions((current) => {
+      const next = [...current];
+      const keep = current[index]?.trim() ? [current[index], ...lines] : lines;
+      next.splice(index, 1, ...keep);
+      return next.slice(0, POLL_MAX_OPTIONS);
+    });
+  }
+
+  async function createFeedPoll() {
+    const options = pollOptions.map((option) => option.trim()).filter(Boolean);
+    if (!pollQuestion.trim()) {
+      notify("error", "Укажи вопрос голосования");
+      return;
+    }
+    if (options.length < 2 || options.length > POLL_MAX_OPTIONS) {
+      notify("error", "Добавь от 2 до 30 вариантов");
+      return;
+    }
+    if (
+      new Set(options.map((option) => option.toLocaleLowerCase())).size !==
+      options.length
+    ) {
+      notify("error", "Варианты не должны повторяться");
+      return;
+    }
+    if (!pollEndsAt || new Date(pollEndsAt).getTime() <= Date.now()) {
+      notify("error", "Укажи дату завершения в будущем");
+      return;
+    }
+
+    try {
+      setSavingPoll(true);
+      const poll = await adminApi.createPoll({
+        question: pollQuestion.trim(),
+        options,
+        endsAt: new Date(pollEndsAt).toISOString(),
+        isAnonymous: pollIsAnonymous,
+        allowUserOptions: pollAllowUserOptions,
+        allowMultipleChoices: pollAllowMultipleChoices,
+      });
+      setPolls((current) => [poll, ...current]);
+      setPollQuestion("");
+      setPollOptions(["", ""]);
+      setPollEndsAt(defaultPollEndDate());
+      notify("success", "Голосование добавлено в сайдбар");
+    } catch {
+      notify("error", "Не удалось создать голосование");
+    } finally {
+      setSavingPoll(false);
+    }
+  }
+
+  async function removePoll(id: string) {
+    try {
+      await adminApi.deletePoll(id);
+      setPolls((current) => current.filter((poll) => poll.id !== id));
+      notify("success", "Голосование удалено");
+    } catch {
+      notify("error", "Не удалось удалить голосование");
     }
   }
 
@@ -829,76 +1054,317 @@ export function AdminPage() {
       )}
 
       {!loading && !loadError && tab === "banners" && (
-        <div className="admin-split">
+        <>
           <Card
-            title="Сейчас на главной"
-            description={`${banners.length} в сайдбаре ленты`}
+            title="Постишки на главной"
+            description={`${postCounts.on} в сайдбаре ленты · нажми на постишку, чтобы добавить или убрать`}
+            actions={
+              <div className="admin-picker__tools">
+                <input
+                  className="input admin-search"
+                  placeholder="Название, текст или автор"
+                  value={postQuery}
+                  onChange={(e) => setPostQuery(e.target.value)}
+                />
+                <div className="admin-filter" role="tablist">
+                  {POST_FILTERS.map((item) => (
+                    <button
+                      key={item.id}
+                      role="tab"
+                      aria-selected={postFilter === item.id}
+                      className={`btn btn-segment ${postFilter === item.id ? "is-active" : ""}`}
+                      onClick={() => setPostFilter(item.id)}
+                    >
+                      {item.label}
+                      <span className="admin-filter__count">
+                        {postCounts[item.id]}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            }
           >
-            <div className="admin-list">
-              {banners.map((banner, index) => (
-                <div className="admin-row" key={banner.id}>
-                  <span className="admin-index">{index + 1}</span>
-                  {banner.imageUrl ? (
-                    <img className="admin-thumb" src={banner.imageUrl} alt="" />
-                  ) : (
-                    <div className="admin-thumb" />
-                  )}
-                  <div className="admin-person__text admin-grow">
-                    <strong>{banner.title || "Без названия"}</strong>
-                    <span>
-                      {new Date(banner.createdAt).toLocaleDateString("ru-RU")}
-                    </span>
-                  </div>
+            <div className="admin-picker">
+              {postFilter !== "off" &&
+                !postQuery.trim() &&
+                orphanBanners.map((banner) => (
                   <button
-                    className="btn btn-icon"
-                    data-tooltip="Убрать с главной"
+                    type="button"
+                    key={banner.id}
+                    className="admin-pick is-on"
+                    aria-pressed
                     onClick={() => void removeBanner(banner.id)}
                   >
-                    <TrashIcon />
+                    <span className="admin-pick__check">
+                      <CheckIcon />
+                    </span>
+                    {banner.imageUrl ? (
+                      <img
+                        className="admin-thumb"
+                        src={getBrowserFileUrl(banner.imageUrl)}
+                        alt=""
+                        loading="lazy"
+                      />
+                    ) : (
+                      <div className="admin-thumb" />
+                    )}
+                    <span className="admin-pick__text">
+                      <strong>{banner.title || "Без названия"}</strong>
+                      <span>Постишка удалена — убрать баннер</span>
+                    </span>
                   </button>
-                </div>
-              ))}
-              {!banners.length && (
-                <p className="admin-empty">
-                  Пока пусто — выбери постишки справа
+                ))}
+
+              {visiblePosts.map((post) => {
+                const banner = bannerByPostId.get(post.id);
+                const isOn = !!banner;
+                const busy = togglingPostIds.includes(post.id);
+                const thumb = banner?.imageUrl
+                  ? getBrowserFileUrl(banner.imageUrl)
+                  : postThumbUrl(post);
+                const position = banner
+                  ? banners.findIndex((item) => item.id === banner.id) + 1
+                  : 0;
+                return (
+                  <button
+                    type="button"
+                    key={post.id}
+                    className={`admin-pick ${isOn ? "is-on" : ""}`}
+                    aria-pressed={isOn}
+                    disabled={busy}
+                    onClick={() => void togglePostBanner(post)}
+                  >
+                    <span className="admin-pick__check">
+                      {isOn && <CheckIcon />}
+                    </span>
+                    {thumb ? (
+                      <img
+                        className="admin-thumb"
+                        src={thumb}
+                        alt=""
+                        loading="lazy"
+                      />
+                    ) : (
+                      <div className="admin-thumb" />
+                    )}
+                    <span className="admin-pick__text">
+                      <strong>{postLabel(post)}</strong>
+                      <span>
+                        {post.author.displayName} ·{" "}
+                        {new Date(post.createdAt).toLocaleDateString("ru-RU")}
+                      </span>
+                    </span>
+                    {isOn && (
+                      <span className="admin-pick__pos">№{position}</span>
+                    )}
+                  </button>
+                );
+              })}
+
+              {!visiblePosts.length && !orphanBanners.length && (
+                <p className="admin-empty admin-picker__empty">
+                  Ничего не найдено
                 </p>
               )}
             </div>
           </Card>
 
           <Card
-            title="Все постишки"
-            description={`${availablePosts.length} доступно`}
-            actions={
-              <input
-                className="input admin-search"
-                placeholder="Поиск по названию"
-                value={postQuery}
-                onChange={(e) => setPostQuery(e.target.value)}
-              />
-            }
+            title="Новое голосование"
+            description="Появится в сайдбаре ленты и будет обновляться у всех участников в реальном времени."
           >
-            <div className="admin-list admin-list--scroll">
-              {availablePosts.map((post) => (
-                <div className="admin-row" key={post.id}>
-                  <strong className="admin-grow admin-ellipsis">
-                    {post.title || "Без названия"}
-                  </strong>
+            <div className="admin-poll">
+              <div className="admin-poll__main">
+                <div>
+                  <div className="admin-poll__label-row">
+                    <label
+                      className="label-field"
+                      htmlFor="admin-poll-question"
+                    >
+                      Вопрос
+                    </label>
+                    <span className="admin-poll__counter">
+                      {pollQuestion.length}/200
+                    </span>
+                  </div>
+                  <input
+                    id="admin-poll-question"
+                    className="input"
+                    value={pollQuestion}
+                    maxLength={200}
+                    placeholder="О чём спросим участников?"
+                    onChange={(event) => setPollQuestion(event.target.value)}
+                  />
+                </div>
+
+                <div>
+                  <div className="admin-poll__label-row">
+                    <span className="label-field">Варианты ответа</span>
+                    <span className="admin-poll__counter">
+                      {pollOptions.filter((option) => option.trim()).length}/
+                      {POLL_MAX_OPTIONS}
+                    </span>
+                  </div>
+                  <div className="admin-poll-options" ref={pollOptionsRef}>
+                    {pollOptions.map((option, index) => (
+                      <div className="admin-poll-option" key={index}>
+                        <span className="admin-index">{index + 1}</span>
+                        <input
+                          className="input"
+                          value={option}
+                          maxLength={120}
+                          placeholder={`Вариант ${index + 1}`}
+                          aria-label={`Вариант ${index + 1}`}
+                          onChange={(event) =>
+                            updatePollOption(index, event.target.value)
+                          }
+                          onPaste={(event) => pastePollOptions(index, event)}
+                          onKeyDown={(event) => {
+                            if (event.key !== "Enter") return;
+                            event.preventDefault();
+                            if (index === pollOptions.length - 1) {
+                              if (option.trim()) addPollOption();
+                            } else {
+                              const next =
+                                pollOptionsRef.current?.querySelectorAll(
+                                  "input",
+                                )[index + 1];
+                              next?.focus();
+                            }
+                          }}
+                        />
+                        <button
+                          type="button"
+                          className="btn btn-icon"
+                          data-tooltip="Убрать вариант"
+                          disabled={pollOptions.length <= 2}
+                          onClick={() => removePollOption(index)}
+                        >
+                          <CloseIcon />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
                   <button
-                    className="btn btn-secondary btn-sm"
-                    onClick={() => void addBanner(post.id)}
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    disabled={pollOptions.length >= POLL_MAX_OPTIONS}
+                    onClick={addPollOption}
                   >
                     <PlusIcon />
-                    На главную
+                    Добавить вариант
+                  </button>
+                </div>
+              </div>
+
+              <div className="admin-poll__side">
+                <div>
+                  <label className="label-field" htmlFor="admin-poll-ends">
+                    Голосование завершится
+                  </label>
+                  <input
+                    id="admin-poll-ends"
+                    className="input"
+                    type="datetime-local"
+                    value={pollEndsAt}
+                    onChange={(event) => setPollEndsAt(event.target.value)}
+                  />
+                  <div className="admin-presets admin-poll__presets">
+                    {POLL_DURATIONS.map((item) => (
+                      <button
+                        type="button"
+                        key={item.hours}
+                        className="btn btn-segment"
+                        onClick={() => setPollEndsAt(endDateIn(item.hours))}
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="admin-switches">
+                  <SwitchRow
+                    checked={pollIsAnonymous}
+                    onChange={setPollIsAnonymous}
+                    title="Анонимное голосование"
+                    text="Не показывать, кто за что проголосовал"
+                  />
+                  <SwitchRow
+                    checked={pollAllowMultipleChoices}
+                    onChange={setPollAllowMultipleChoices}
+                    title="Несколько ответов"
+                    text="Участник может отметить сразу несколько вариантов"
+                  />
+                  <SwitchRow
+                    checked={pollAllowUserOptions}
+                    onChange={setPollAllowUserOptions}
+                    title="Свои варианты"
+                    text="Участники смогут предложить новый вариант"
+                  />
+                </div>
+
+                <button
+                  className="btn btn-primary admin-poll__submit"
+                  disabled={savingPoll}
+                  onClick={() => void createFeedPoll()}
+                >
+                  {savingPoll ? "Создаю..." : "Создать голосование"}
+                </button>
+              </div>
+            </div>
+          </Card>
+
+          <Card
+            title="Голосования в сайдбаре"
+            description={`${polls.length} всего`}
+          >
+            <div className="admin-list">
+              {polls.map((poll) => (
+                <div className="admin-row" key={poll.id}>
+                  <div className="admin-person__text admin-grow">
+                    <strong>{poll.question}</strong>
+                    <span>
+                      {poll.options.length} вар. · {poll.totalVotes} голосов
+                      {poll.isAnonymous ? " · анонимное" : ""}
+                      {poll.allowMultipleChoices ? " · мультивыбор" : ""}
+                      {poll.isClosed
+                        ? ""
+                        : ` · до ${new Date(poll.endsAt).toLocaleString(
+                            "ru-RU",
+                            { dateStyle: "short", timeStyle: "short" },
+                          )}`}
+                    </span>
+                  </div>
+                  <span
+                    className={`badge ${poll.isClosed ? "badge-neutral" : "badge-success"}`}
+                  >
+                    <i className="badge-dot" />
+                    {poll.isClosed ? "Завершено" : "Идёт"}
+                  </span>
+                  <button
+                    className="btn btn-icon"
+                    data-tooltip="Удалить голосование"
+                    onClick={() =>
+                      setConfirm({
+                        title: "Удалить голосование?",
+                        text: `«${poll.question}» исчезнет из сайдбара вместе со всеми голосами.`,
+                        confirmLabel: "Удалить",
+                        onConfirm: () => void removePoll(poll.id),
+                      })
+                    }
+                  >
+                    <TrashIcon />
                   </button>
                 </div>
               ))}
-              {!availablePosts.length && (
-                <p className="admin-empty">Ничего не найдено</p>
+              {!polls.length && (
+                <p className="admin-empty">Голосований пока нет</p>
               )}
             </div>
           </Card>
-        </div>
+        </>
       )}
 
       {!loading && !loadError && tab === "users" && (

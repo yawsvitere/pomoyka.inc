@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { HubConnectionBuilder, LogLevel } from "@microsoft/signalr";
 import * as postsApi from "../api/posts";
-import type { Comment, Post } from "../api/types";
+import type { Comment, FeedPoll, Post } from "../api/types";
 import { useAuth } from "../context/AuthContext";
 import { FeedComposer } from "../components/feed/FeedComposer";
 import { useToast } from "../components/ui/useToast";
@@ -87,22 +87,30 @@ export function FeedPage() {
   const [banners, setBanners] = useState<import("../api/types").FeedBanner[]>(
     [],
   );
+  const [polls, setPolls] = useState<FeedPoll[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [hasMore, setHasMore] = useState(true);
   const [openComments, setOpenComments] = useState<Set<string>>(new Set());
   const nextPageRef = useRef(1);
 
+  const refreshSidebar = useCallback(async () => {
+    const [nextBanners, nextPostishki, nextPolls] = await Promise.all([
+      postsApi.getFeedBanners(),
+      postsApi.getPostishki(1, 3),
+      postsApi.getFeedPolls(),
+    ]);
+    setBanners(nextBanners);
+    setPostishki(nextPostishki);
+    setPolls(nextPolls);
+  }, []);
+
   useEffect(() => {
     if (!user) return;
 
-    void postsApi
-      .getFeedBanners()
-      .then(setBanners)
-      .catch(() => setBanners([]));
-    void postsApi
-      .getPostishki(1, 3)
-      .then(setPostishki)
-      .catch(() => setPostishki([]));
+    void refreshSidebar().catch((error: unknown) => {
+      console.error("Error loading feed sidebar:", error);
+      notify("error", "Не удалось загрузить сайдбар");
+    });
 
     setPosts((currentPosts) =>
       currentPosts.map((post) => ({
@@ -127,7 +135,7 @@ export function FeedPage() {
         })),
       })),
     );
-  }, [user]);
+  }, [user, refreshSidebar, notify]);
 
   useEffect(() => {
     void loadFeed(1);
@@ -147,6 +155,15 @@ export function FeedPage() {
           : sortPostsNewestFirst([...currentPosts, newPost]),
       );
     });
+
+    const refreshSidebarOnSignal = () => {
+      void refreshSidebar().catch((error: unknown) => {
+        console.error("Error refreshing feed sidebar:", error);
+        notify("error", "Не удалось обновить сайдбар");
+      });
+    };
+    connection.on("FeedSidebarChanged", refreshSidebarOnSignal);
+    connection.onreconnected(refreshSidebarOnSignal);
 
     connection.on(
       "UserAvatarChanged",
@@ -213,6 +230,7 @@ export function FeedPage() {
       setPosts((currentPosts) =>
         currentPosts.filter((post) => post.id !== postId),
       );
+      refreshSidebarOnSignal();
     });
 
     connection.on(
@@ -277,7 +295,7 @@ export function FeedPage() {
     return () => {
       connection.stop();
     };
-  }, []);
+  }, [refreshSidebar, notify]);
 
   const loadFeed = useCallback(
     async (page: number) => {
@@ -484,7 +502,19 @@ export function FeedPage() {
           </FeedComposer>
         </section>
 
-        <FeedSidebar posts={posts} postishki={postishki} banners={banners} />
+        <FeedSidebar
+          posts={posts}
+          postishki={postishki}
+          banners={banners}
+          polls={polls}
+          onPollUpdate={(updatedPoll) =>
+            setPolls((current) =>
+              current.map((poll) =>
+                poll.id === updatedPoll.id ? updatedPoll : poll,
+              ),
+            )
+          }
+        />
       </div>
     </div>
   );

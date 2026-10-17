@@ -1,5 +1,12 @@
 import { apiClient } from "./client";
-import type { Comment, FeedBanner, Post, PostFile, PostReaction } from "./types";
+import type {
+  Comment,
+  FeedBanner,
+  FeedPoll,
+  Post,
+  PostFile,
+  PostReaction,
+} from "./types";
 
 export async function getFeed(page = 1, pageSize = 20) {
   const { data } = await apiClient.get<Post[]>("/api/posts", {
@@ -10,6 +17,27 @@ export async function getFeed(page = 1, pageSize = 20) {
 
 export async function getFeedBanners() {
   const { data } = await apiClient.get<FeedBanner[]>('/api/banners');
+  return data;
+}
+
+export async function getFeedPolls() {
+  const { data } = await apiClient.get<FeedPoll[]>("/api/polls");
+  return data;
+}
+
+export async function voteFeedPoll(pollId: string, optionIds: string[]) {
+  const { data } = await apiClient.put<FeedPoll>(
+    `/api/polls/${pollId}/vote`,
+    { optionIds },
+  );
+  return data;
+}
+
+export async function addFeedPollOption(pollId: string, text: string) {
+  const { data } = await apiClient.post<FeedPoll>(
+    `/api/polls/${pollId}/options`,
+    { text },
+  );
   return data;
 }
 

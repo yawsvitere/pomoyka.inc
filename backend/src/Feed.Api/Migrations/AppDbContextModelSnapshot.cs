@@ -360,6 +360,108 @@ namespace Feed.Api.Migrations
                     b.ToTable("FeedBanners");
                 });
 
+            modelBuilder.Entity("Feed.Api.Models.FeedPoll", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("AllowMultipleChoices")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("AllowUserOptions")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("EndsAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsAnonymous")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Question")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt");
+
+                    b.ToTable("FeedPolls");
+                });
+
+            modelBuilder.Entity("Feed.Api.Models.FeedPollOption", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("CreatedById")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("PollId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedById");
+
+                    b.HasIndex("PollId", "SortOrder");
+
+                    b.ToTable("FeedPollOptions");
+                });
+
+            modelBuilder.Entity("Feed.Api.Models.FeedPollVote", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("PollId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("VotedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("PollId", "UserId")
+                        .IsUnique();
+
+                    b.ToTable("FeedPollVotes");
+                });
+
+            modelBuilder.Entity("Feed.Api.Models.FeedPollVoteOption", b =>
+                {
+                    b.Property<Guid>("VoteId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("OptionId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("VoteId", "OptionId");
+
+                    b.HasIndex("OptionId");
+
+                    b.ToTable("FeedPollVoteOptions");
+                });
+
             modelBuilder.Entity("Feed.Api.Models.FileFolder", b =>
                 {
                     b.Property<Guid>("Id")
@@ -981,6 +1083,62 @@ namespace Feed.Api.Migrations
                     b.Navigation("Post");
                 });
 
+            modelBuilder.Entity("Feed.Api.Models.FeedPollOption", b =>
+                {
+                    b.HasOne("Feed.Api.Models.AppUser", "CreatedBy")
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("Feed.Api.Models.FeedPoll", "Poll")
+                        .WithMany("Options")
+                        .HasForeignKey("PollId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("CreatedBy");
+
+                    b.Navigation("Poll");
+                });
+
+            modelBuilder.Entity("Feed.Api.Models.FeedPollVote", b =>
+                {
+                    b.HasOne("Feed.Api.Models.FeedPoll", "Poll")
+                        .WithMany("Votes")
+                        .HasForeignKey("PollId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Feed.Api.Models.AppUser", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Poll");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Feed.Api.Models.FeedPollVoteOption", b =>
+                {
+                    b.HasOne("Feed.Api.Models.FeedPollOption", "Option")
+                        .WithMany("Votes")
+                        .HasForeignKey("OptionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Feed.Api.Models.FeedPollVote", "Vote")
+                        .WithMany("Options")
+                        .HasForeignKey("VoteId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Option");
+
+                    b.Navigation("Vote");
+                });
+
             modelBuilder.Entity("Feed.Api.Models.FileFolder", b =>
                 {
                     b.HasOne("Feed.Api.Models.AppUser", "Owner")
@@ -1184,6 +1342,23 @@ namespace Feed.Api.Migrations
             modelBuilder.Entity("Feed.Api.Models.ArchivedPostComment", b =>
                 {
                     b.Navigation("Files");
+                });
+
+            modelBuilder.Entity("Feed.Api.Models.FeedPoll", b =>
+                {
+                    b.Navigation("Options");
+
+                    b.Navigation("Votes");
+                });
+
+            modelBuilder.Entity("Feed.Api.Models.FeedPollOption", b =>
+                {
+                    b.Navigation("Votes");
+                });
+
+            modelBuilder.Entity("Feed.Api.Models.FeedPollVote", b =>
+                {
+                    b.Navigation("Options");
                 });
 
             modelBuilder.Entity("Feed.Api.Models.FileFolder", b =>

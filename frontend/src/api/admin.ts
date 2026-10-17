@@ -1,5 +1,5 @@
 import { apiClient } from "./client";
-import type { FeedBanner, Post } from "./types";
+import type { FeedBanner, FeedPoll, Post } from "./types";
 
 export interface AdminUser {
   id: string;
@@ -147,6 +147,27 @@ export async function addBanner(postId: string) {
 
 export async function deleteBanner(id: string) {
   await apiClient.delete(`/api/admin/banners/${id}`);
+}
+
+export async function getPolls() {
+  const { data } = await apiClient.get<FeedPoll[]>("/api/admin/polls");
+  return data;
+}
+
+export async function createPoll(request: {
+  question: string;
+  endsAt: string;
+  isAnonymous: boolean;
+  allowUserOptions: boolean;
+  allowMultipleChoices: boolean;
+  options: string[];
+}) {
+  const { data } = await apiClient.post<FeedPoll>("/api/admin/polls", request);
+  return data;
+}
+
+export async function deletePoll(id: string) {
+  await apiClient.delete(`/api/admin/polls/${id}`);
 }
 
 export async function getPostishki() {

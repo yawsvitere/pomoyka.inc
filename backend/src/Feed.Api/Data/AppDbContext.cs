@@ -20,6 +20,10 @@ public class AppDbContext : IdentityDbContext<AppUser, IdentityRole<Guid>, Guid>
     public DbSet<FileFolder> FileFolders => Set<FileFolder>();
     public DbSet<UserFile> UserFiles => Set<UserFile>();
     public DbSet<FeedBanner> FeedBanners => Set<FeedBanner>();
+    public DbSet<FeedPoll> FeedPolls => Set<FeedPoll>();
+    public DbSet<FeedPollOption> FeedPollOptions => Set<FeedPollOption>();
+    public DbSet<FeedPollVote> FeedPollVotes => Set<FeedPollVote>();
+    public DbSet<FeedPollVoteOption> FeedPollVoteOptions => Set<FeedPollVoteOption>();
     public DbSet<StorageSettings> StorageSettings => Set<StorageSettings>();
 
     public DbSet<ArchiveDay> ArchiveDays => Set<ArchiveDay>();
@@ -121,6 +125,52 @@ public class AppDbContext : IdentityDbContext<AppUser, IdentityRole<Guid>, Guid>
                 .OnDelete(DeleteBehavior.Cascade);
             e.HasIndex(x => x.PostId).IsUnique();
             e.HasIndex(x => x.SortOrder);
+        });
+
+        builder.Entity<FeedPoll>(e =>
+        {
+            e.Property(x => x.Question).HasMaxLength(200).IsRequired();
+            e.HasIndex(x => x.CreatedAt);
+            e.HasMany(x => x.Options)
+                .WithOne(x => x.Poll)
+                .HasForeignKey(x => x.PollId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasMany(x => x.Votes)
+                .WithOne(x => x.Poll)
+                .HasForeignKey(x => x.PollId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<FeedPollOption>(e =>
+        {
+            e.Property(x => x.Text).HasMaxLength(120).IsRequired();
+            e.HasIndex(x => new { x.PollId, x.SortOrder });
+            e.HasOne(x => x.CreatedBy)
+                .WithMany()
+                .HasForeignKey(x => x.CreatedById)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        builder.Entity<FeedPollVote>(e =>
+        {
+            e.HasIndex(x => new { x.PollId, x.UserId }).IsUnique();
+            e.HasOne(x => x.User)
+                .WithMany()
+                .HasForeignKey(x => x.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasMany(x => x.Options)
+                .WithOne(x => x.Vote)
+                .HasForeignKey(x => x.VoteId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<FeedPollVoteOption>(e =>
+        {
+            e.HasKey(x => new { x.VoteId, x.OptionId });
+            e.HasOne(x => x.Option)
+                .WithMany(x => x.Votes)
+                .HasForeignKey(x => x.OptionId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         builder.Entity<PostBlock>(e =>

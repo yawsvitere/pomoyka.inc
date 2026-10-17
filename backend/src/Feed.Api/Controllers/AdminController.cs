@@ -272,6 +272,7 @@ public class AdminController : ControllerBase
         };
         _db.FeedBanners.Add(banner);
         await _db.SaveChangesAsync();
+        await NotifySidebarChangedAsync();
 
         banner.Post = post;
         return Ok(ToBannerDto(banner));
@@ -286,6 +287,76 @@ public class AdminController : ControllerBase
 
         _db.FeedBanners.Remove(banner);
         await _db.SaveChangesAsync();
+        await NotifySidebarChangedAsync();
+        return NoContent();
+    }
+
+    [HttpGet("polls")]
+    public async Task<ActionResult<List<FeedPollDto>>> GetPolls()
+    {
+        var userId = GetCurrentUserId();
+        if (userId == null)
+            return Unauthorized();
+
+        var polls = await GetPollQuery()
+            .OrderByDescending(poll => poll.CreatedAt)
+            .ToListAsync();
+
+        return Ok(polls.Select(poll => FeedPollDtoMapper.ToDto(poll, userId.Value)).ToList());
+    }
+
+    [HttpPost("polls")]
+    public async Task<ActionResult<FeedPollDto>> CreatePoll(
+        [FromBody] CreateFeedPollRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Question))
+            return BadRequest(new { message = "Укажи вопрос голосования" });
+        if (request.Question.Trim().Length > 200)
+            return BadRequest(new { message = "Вопрос не должен превышать 200 символов" });
+        if (request.EndsAt.UtcDateTime <= DateTime.UtcNow)
+            return BadRequest(new { message = "Дата завершения должна быть в будущем" });
+        if (request.Options == null || request.Options.Count is < 2 or > 30)
+            return BadRequest(new { message = "Добавь от 2 до 30 вариантов" });
+
+        var options = request.Options.Select(option => option.Trim()).ToList();
+        if (options.Any(option => option.Length is 0 or > 120))
+            return BadRequest(new { message = "Варианты должны содержать от 1 до 120 символов" });
+        if (options.Distinct(StringComparer.OrdinalIgnoreCase).Count() != options.Count)
+            return BadRequest(new { message = "Варианты не должны повторяться" });
+
+        var poll = new FeedPoll
+        {
+            Question = request.Question.Trim(),
+            EndsAt = request.EndsAt.UtcDateTime,
+            IsAnonymous = request.IsAnonymous,
+            AllowUserOptions = request.AllowUserOptions,
+            AllowMultipleChoices = request.AllowMultipleChoices,
+            Options = options.Select((option, index) => new FeedPollOption
+            {
+                Text = option,
+                SortOrder = index
+            }).ToList()
+        };
+
+        _db.FeedPolls.Add(poll);
+        await _db.SaveChangesAsync();
+        await NotifySidebarChangedAsync();
+
+        var createdPoll = await GetPollQuery().FirstAsync(item => item.Id == poll.Id);
+        var adminId = GetCurrentUserId();
+        return Ok(FeedPollDtoMapper.ToDto(createdPoll, adminId!.Value));
+    }
+
+    [HttpDelete("polls/{id:guid}")]
+    public async Task<IActionResult> DeletePoll(Guid id)
+    {
+        var poll = await _db.FeedPolls.FindAsync(id);
+        if (poll == null)
+            return NotFound();
+
+        _db.FeedPolls.Remove(poll);
+        await _db.SaveChangesAsync();
+        await NotifySidebarChangedAsync();
         return NoContent();
     }
 
@@ -300,6 +371,20 @@ public class AdminController : ControllerBase
             ? $"/api/files/post/{image.Id}/download"
             : null
     };
+
+    private IQueryable<FeedPoll> GetPollQuery() =>
+        _db.FeedPolls
+            .AsNoTracking()
+            .AsSplitQuery()
+            .Include(poll => poll.Options)
+                .ThenInclude(option => option.Votes)
+                    .ThenInclude(optionVote => optionVote.Vote)
+                        .ThenInclude(vote => vote!.User)
+            .Include(poll => poll.Votes)
+                .ThenInclude(vote => vote.Options);
+
+    private Task NotifySidebarChangedAsync() =>
+        _feedHub.Clients.Group("feed-global").SendAsync("FeedSidebarChanged");
 
     [HttpPut("users/{id:guid}/role")]
     public async Task<ActionResult> ChangeRole(

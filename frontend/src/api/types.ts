@@ -82,3 +82,30 @@ export interface FeedBanner {
   imageUrl: string | null;
   hasOgCover?: boolean;
 }
+
+export interface FeedPollVoter {
+  id: string;
+  displayName: string;
+  nicknameColor: string;
+  avatarUrl: string | null;
+}
+
+export interface FeedPollOption {
+  id: string;
+  text: string;
+  voteCount: number;
+  voters: FeedPollVoter[];
+}
+
+export interface FeedPoll {
+  id: string;
+  question: string;
+  endsAt: string;
+  isAnonymous: boolean;
+  allowUserOptions: boolean;
+  allowMultipleChoices: boolean;
+  isClosed: boolean;
+  totalVotes: number;
+  myOptionIds: string[];
+  options: FeedPollOption[];
+}
