@@ -257,10 +257,12 @@ function PollCard({
                     onChange={() => toggleOption(option.id)}
                     disabled={isSubmitting}
                   />
-                  <span
-                    className={`feed-poll-mark${poll.allowMultipleChoices ? " is-multi" : ""}`}
-                    aria-hidden="true"
-                  />
+                  {(!hasVoted || isSelected) && (
+                    <span
+                      className={`feed-poll-mark${poll.allowMultipleChoices ? " is-multi" : ""}`}
+                      aria-hidden="true"
+                    />
+                  )}
                   {rowBody}
                 </label>
               )}

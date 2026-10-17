@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type CSSProperties,
@@ -41,6 +42,11 @@ const TARGET_ROW_HEIGHT = 220;
 const MIN_ROW_HEIGHT = 150;
 const MAX_ROW_HEIGHT = 360;
 const MAX_TALL_MEDIA_HEIGHT = 500;
+const MAX_SINGLE_IMAGE_WIDTH = 865;
+const FALLBACK_GALLERY_WIDTH = 600;
+
+const ratioCache = new Map<string, ImageRatio>();
+const loadedImageCache = new Set<string>();
 const MAX_VIDEO_WIDTH = 992;
 const MAX_VIDEO_HEIGHT = 750;
 
@@ -65,12 +71,26 @@ type GalleryLayout =
       aspectRatio: number;
     };
 
+const DEFAULT_RATIO = 4 / 3;
+
+function getDimensions(
+  file: Post["files"][number],
+  ratioMap: Record<string, ImageRatio>,
+): ImageRatio | undefined {
+  const { width, height } = file as {
+    width?: number | null;
+    height?: number | null;
+  };
+  if (width && height) return { width, height };
+  return ratioMap[file.id];
+}
+
 function getRatio(
   file: Post["files"][number],
   ratioMap: Record<string, ImageRatio>,
 ) {
-  const dimensions = ratioMap[file.id];
-  return dimensions ? dimensions.width / dimensions.height : 1;
+  const dimensions = getDimensions(file, ratioMap);
+  return dimensions ? dimensions.width / dimensions.height : DEFAULT_RATIO;
 }
 
 function isAdmin() {
@@ -130,7 +150,7 @@ function PostishkaOgPreview({
   return (
     <AppLink className="postishka-og-preview" to={href}>
       {imageUrl ? (
-        <img src={imageUrl} alt="" loading="lazy" />
+        <img src={imageUrl} loading="lazy" />
       ) : (
         <div className="postishka-og-placeholder">
           {failed ? "Превью недоступно" : "Загружаем превью…"}
@@ -139,7 +159,9 @@ function PostishkaOgPreview({
       <span className="postishka-og-action">
         <span>
           Открыть постишку
-          <span className="postishka-og-arrow" aria-hidden="true">→</span>
+          <span className="postishka-og-arrow" aria-hidden="true">
+            →
+          </span>
         </span>
       </span>
     </AppLink>
@@ -286,23 +308,61 @@ function calculateLayout(
   containerWidth: number,
   ratioMap: Record<string, ImageRatio>,
 ): GalleryLayout {
-  if (!files.length || !containerWidth) return { type: "rows", rows: [] };
+  if (!files.length) return { type: "rows", rows: [] };
 
-  if (files.length <= 4) {
-    return calculateMosaicLayout(files, ratioMap) ?? { type: "rows", rows: [] };
-  }
+  const mosaic = calculateMosaicLayout(files, ratioMap);
+  if (mosaic) return mosaic;
 
-  return (
-    calculateMosaicLayout(files, ratioMap) ??
-    calculateRows(files, containerWidth, ratioMap)
+  return calculateRows(
+    files,
+    containerWidth || FALLBACK_GALLERY_WIDTH,
+    ratioMap,
   );
 }
+
 function PostImageGallery({ files }: { files: Post["files"] }) {
   const galleryRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(0);
+  const [previewStarted, setPreviewStarted] = useState(() =>
+    files.every((file) => loadedImageCache.has(file.id)),
+  );
+  const [retryCounts, setRetryCounts] = useState<Record<string, number>>({});
+  const [loadedImages, setLoadedImages] = useState<Record<string, boolean>>(
+    () =>
+      Object.fromEntries(
+        files
+          .filter((file) => loadedImageCache.has(file.id))
+          .map((file) => [file.id, true]),
+      ),
+  );
+  const [originalFallbacks, setOriginalFallbacks] = useState<
+    Record<string, boolean>
+  >({});
   const [, setRatiosVersion] = useState(0);
-  const ratioMapRef = useRef<Record<string, ImageRatio>>({});
+  const ratioMapRef = useRef<Record<string, ImageRatio>>(
+    Object.fromEntries(
+      files.flatMap((file) => {
+        const cached = ratioCache.get(file.id);
+        return cached ? [[file.id, cached] as const] : [];
+      }),
+    ),
+  );
+  const retryTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>(
+    {},
+  );
   useEffect(() => {
+    if (previewStarted) return;
+    const timer = setTimeout(() => setPreviewStarted(true), 750);
+    return () => clearTimeout(timer);
+  }, [previewStarted]);
+  useEffect(
+    () => () => {
+      Object.values(retryTimersRef.current).forEach(clearTimeout);
+    },
+    [],
+  );
+
+  useLayoutEffect(() => {
     const gallery = galleryRef.current;
     if (!gallery) return;
     const observer = new ResizeObserver(() =>
@@ -327,14 +387,26 @@ function PostImageGallery({ files }: { files: Post["files"] }) {
         width: image.naturalWidth,
         height: image.naturalHeight,
       };
+      ratioCache.set(fileId, ratioMapRef.current[fileId]);
       setRatiosVersion((version) => version + 1);
     }
   };
   const renderImage = (item: GalleryItem) => {
     const fileUrl = getBrowserFileUrl(item.file.downloadUrl);
+    const previewUrl = getBrowserFileUrl(item.file.previewUrl);
+    const retryCount = retryCounts[item.file.id] ?? 0;
+    const imageUrl = originalFallbacks[item.file.id]
+      ? fileUrl
+      : retryCount
+        ? `${previewUrl}${previewUrl.includes("?") ? "&" : "?"}retry=${retryCount}`
+        : previewUrl;
     const isSingleImage = files.length === 1;
-    const isPortrait = getRatio(item.file, ratioMapRef.current) < 1;
-    const isSinglePortrait = isSingleImage && isPortrait;
+    const dimensions = getDimensions(item.file, ratioMapRef.current);
+    const singleImageWidth = Math.min(
+      MAX_SINGLE_IMAGE_WIDTH,
+      MAX_TALL_MEDIA_HEIGHT * item.ratio,
+      dimensions?.width ?? Number.POSITIVE_INFINITY,
+    );
 
     return (
       <div
@@ -342,44 +414,65 @@ function PostImageGallery({ files }: { files: Post["files"] }) {
         key={item.file.id}
         style={{
           flex: layout.type === "rows" ? `${item.ratio} 1 0` : undefined,
-          width:
-            layout.type === "mosaic" && !isSingleImage ? "100%" : undefined,
+          width: isSingleImage
+            ? `${singleImageWidth}px`
+            : layout.type === "mosaic"
+              ? "100%"
+              : undefined,
           height:
             layout.type === "mosaic" && !isSingleImage ? "100%" : undefined,
           aspectRatio:
-            layout.type === "mosaic" && !isSingleImage ? item.ratio : undefined,
+            isSingleImage || layout.type === "mosaic" ? item.ratio : undefined,
         }}
       >
         <PhotoView src={fileUrl}>
           <img
             className="post-image"
-            src={getBrowserFileUrl(item.file.previewUrl)}
-            alt={item.file.fileName}
-            onLoad={(event) => handleImageLoad(event, item.file.id)}
-            style={
-              isSingleImage
-                ? {
-                    maxWidth: "100%",
-                    height: "auto",
-                    maxHeight: `${MAX_TALL_MEDIA_HEIGHT}px`,
-                    objectFit: "contain",
-                    margin: isSinglePortrait ? "0 auto 0 0" : "0 auto",
-                    display: "block",
-                  }
-                : {
-                    width: "100%",
-                    height: "100%",
-                    objectFit: "cover",
-                    margin: 0,
-                  }
+            src={
+              previewStarted ||
+              loadedImageCache.has(item.file.id) ||
+              originalFallbacks[item.file.id]
+                ? imageUrl
+                : undefined
             }
+            data-loaded={loadedImages[item.file.id] ? "true" : "false"}
+            onLoad={(event) => {
+              loadedImageCache.add(item.file.id);
+              setLoadedImages((loaded) => ({
+                ...loaded,
+                [item.file.id]: true,
+              }));
+              handleImageLoad(event, item.file.id);
+            }}
+            onError={() => {
+              if (originalFallbacks[item.file.id]) return;
+              if (retryCount >= 12) {
+                setOriginalFallbacks((fallbacks) => ({
+                  ...fallbacks,
+                  [item.file.id]: true,
+                }));
+                return;
+              }
+              clearTimeout(retryTimersRef.current[item.file.id]);
+              retryTimersRef.current[item.file.id] = setTimeout(() => {
+                delete retryTimersRef.current[item.file.id];
+                setRetryCounts((counts) => ({
+                  ...counts,
+                  [item.file.id]: (counts[item.file.id] ?? 0) + 1,
+                }));
+              }, 1000);
+            }}
+            style={{ objectFit: "cover" }}
           />
         </PhotoView>
       </div>
     );
   };
   return (
-    <div className="post-photo-gallery" ref={galleryRef}>
+    <div
+      className={`post-photo-gallery${files.length === 1 ? " post-photo-gallery--single" : ""}`}
+      ref={galleryRef}
+    >
       {layout.type === "mosaic" ? (
         <div
           className={`post-photo-mosaic post-photo-mosaic--${layout.template}`}
@@ -488,8 +581,7 @@ export function PostCard({
   const isMine = isOwnPost || user?.id === post.author.id;
   const handleContextReaction = (emoji: string) => {
     const isAlreadyMine = post.reactions?.some(
-      (reaction) =>
-        reaction.emoji === emoji && reaction.user?.id === user?.id,
+      (reaction) => reaction.emoji === emoji && reaction.user?.id === user?.id,
     );
     if (!isAlreadyMine) {
       reactionAnimationCounterRef.current += 1;
@@ -641,7 +733,7 @@ export function PostCard({
             <span className="post-avatar-spacer" aria-hidden="true" />
           )}
           <div
-            className={`post-body${imageFiles.length > 1 ? " post-body--with-files" : ""}${isMediaOnly ? " post-body--media-only" : ""}${isReactionsOnly ? " post-body--reactions-only" : ""}${isTextOnly ? " post-body--text-only" : ""}${post.isPostishka || post.relatedPostId ? " post-body--postishka-preview" : ""}`}
+            className={`post-body${imageFiles.length > 1 ? " post-body--with-files" : ""}${imageFiles.length === 1 ? " post-body--single-image" : ""}${isMediaOnly ? " post-body--media-only" : ""}${isReactionsOnly ? " post-body--reactions-only" : ""}${isTextOnly ? " post-body--text-only" : ""}${post.isPostishka || post.relatedPostId ? " post-body--postishka-preview" : ""}`}
           >
             {showAuthor && (
               <div className="post-meta">
@@ -712,10 +804,7 @@ export function PostCard({
             )}
             {post.isPostishka ? (
               <>
-                <PostishkaOgPreview
-                  postId={post.id}
-                  href={postishkaHref}
-                />
+                <PostishkaOgPreview postId={post.id} href={postishkaHref} />
                 {!reactionChips && (
                   <span className="post-time post-time--bottom">
                     {new Date(post.createdAt).toLocaleTimeString([], {
@@ -776,7 +865,7 @@ export function PostCard({
                 </span>
               </div>
             ) : (
-              reactionsOverlay ?? reactionsInline
+              (reactionsOverlay ?? reactionsInline)
             )}
             {!reactionChips &&
               !post.isPostishka &&
