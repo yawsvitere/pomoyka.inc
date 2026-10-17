@@ -16,6 +16,7 @@ using Feed.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 
 namespace Feed.Api.Controllers;
@@ -623,16 +624,14 @@ public class PostsController : ControllerBase
         {
             await using var stream = file.OpenReadStream();
             var storageKey = await _storage.UploadDeduplicatedObjectAsync(stream, file.ContentType);
-            await _storage.CreateVideoPreviewAsync(storageKey, file.ContentType);
             var stored = new PostFile { PostId = post.Id, FileName = Path.GetFileName(file.FileName), StorageKey = storageKey, ContentType = file.ContentType, SizeBytes = file.Length };
             storedFiles.Add(stored);
             _db.PostFiles.Add(stored);
         }
         await _db.SaveChangesAsync();
 
-        foreach (var image in storedFiles.Where(file =>
-                     file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)))
-            _imagePreviewBackgroundService.Enqueue(image.StorageKey, image.ContentType);
+        foreach (var file in storedFiles.Where(IsPreviewable))
+            _imagePreviewBackgroundService.Enqueue(file.StorageKey, file.ContentType);
 
         var created = await QueryPost(post.Id).FirstAsync();
         var dto = ToDto(created);
@@ -829,7 +828,6 @@ public class PostsController : ControllerBase
         {
             await using var stream = file.OpenReadStream();
             var storageKey = await _storage.UploadDeduplicatedObjectAsync(stream, file.ContentType);
-            await _storage.CreateVideoPreviewAsync(storageKey, file.ContentType);
             var stored = new PostFile
             {
                 PostId = post.Id,
@@ -866,9 +864,8 @@ public class PostsController : ControllerBase
             deletedFiles.Select(file => (file.StorageKey, file.ContentType)));
         await _ogImageCache.InvalidateAsync(OgImageStorageCache.PostKey(post.Id));
 
-        foreach (var image in uploadedFiles.Where(file =>
-                     file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)))
-            _imagePreviewBackgroundService.Enqueue(image.StorageKey, image.ContentType);
+        foreach (var file in uploadedFiles.Where(IsPreviewable))
+            _imagePreviewBackgroundService.Enqueue(file.StorageKey, file.ContentType);
 
         var updated = await QueryPost(post.Id).FirstAsync();
         return Ok(ToDto(updated));
@@ -1052,6 +1049,10 @@ public class PostsController : ControllerBase
         try { return JsonSerializer.Deserialize<List<PostReactionEntry>>(data ?? "[]") ?? new(); }
         catch (JsonException) { return new(); }
     }
+
+    private static bool IsPreviewable(PostFile file) =>
+        file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase) ||
+        file.ContentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase);
 
     private static PostReactionDto ToCommentReactionDto(
         PostReactionEntry reaction,

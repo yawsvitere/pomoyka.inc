@@ -89,6 +89,14 @@ const PrivateLayout = lazy(() =>
   })),
 );
 
+function AppLoading() {
+  return (
+    <div className="app-loading" role="status" aria-label="Загрузка">
+      <span className="app-loading__mark" />
+    </div>
+  );
+}
+
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
 
@@ -142,7 +150,7 @@ function GuestRoute({ children }: { children: React.ReactNode }) {
 
 function AppRoutes() {
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<AppLoading />}>
       <Routes>
         <Route
           path="/auth"

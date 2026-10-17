@@ -42,8 +42,12 @@ public class StorageService : IStorageService
     private readonly HttpClient _httpClient;
     private readonly string _bucket;
     private readonly string _publicEndpoint;
+    private readonly bool _publicUseSsl;
     private readonly string _imgproxyEndpoint;
     private readonly string _imgproxySourceEndpoint;
+    private readonly long _maxImagePixels;
+    private readonly long _maxPreviewBytes;
+    private readonly TimeSpan _videoPreviewTimeout;
 
     public StorageService(IAmazonS3 s3, IHttpClientFactory httpClientFactory, IConfiguration config)
     {
@@ -53,8 +57,14 @@ public class StorageService : IStorageService
         _imgproxyEndpoint = config["Imgproxy:Endpoint"] ?? "http://localhost:8081";
         _imgproxySourceEndpoint =
             $"http{(config.GetValue<bool>("Minio:UseSSL") ? "s" : "")}://{config["Minio:Endpoint"] ?? "localhost:9000"}";
+        _maxImagePixels = Math.Clamp(config.GetValue<long?>("PreviewWorker:MaxImagePixels") ?? 80_000_000, 1_000_000, 500_000_000);
+        _maxPreviewBytes = Math.Clamp(config.GetValue<long?>("PreviewWorker:MaxPreviewBytes") ?? 20L * 1024 * 1024, 1L * 1024 * 1024, 100L * 1024 * 1024);
+        _videoPreviewTimeout = TimeSpan.FromSeconds(Math.Clamp(
+            config.GetValue<int?>("PreviewWorker:VideoTimeoutSeconds") ?? 90, 10, 600));
 
         _publicEndpoint = config["Minio:PublicEndpoint"] ?? config["Minio:Endpoint"] ?? "localhost:9000";
+        _publicUseSsl = config.GetValue<bool?>("Minio:PublicUseSSL") ??
+            config.GetValue<bool>("Minio:UseSSL");
         _publicS3 = string.IsNullOrWhiteSpace(_publicEndpoint)
             ? _s3
             : new AmazonS3Client(
@@ -62,7 +72,7 @@ public class StorageService : IStorageService
                     config["Minio:AccessKey"], config["Minio:SecretKey"]),
                 new AmazonS3Config
                 {
-                    ServiceURL = $"http://{_publicEndpoint}",
+                    ServiceURL = $"{(_publicUseSsl ? "https" : "http")}://{_publicEndpoint}",
                     ForcePathStyle = true
                 });
     }
@@ -93,7 +103,7 @@ public class StorageService : IStorageService
     }
 
     public string GetPublicObjectUrl(string objectKey) =>
-        $"http://{_publicEndpoint}/{_bucket}/{string.Join('/', objectKey.Split('/').Select(Uri.EscapeDataString))}";
+        $"{(_publicUseSsl ? "https" : "http")}://{_publicEndpoint}/{_bucket}/{string.Join('/', objectKey.Split('/').Select(Uri.EscapeDataString))}";
 
     public async Task DeleteObjectAsync(string objectKey)
     {
@@ -172,6 +182,8 @@ public class StorageService : IStorageService
                 ?? throw new InvalidOperationException($"Could not identify image {sourceKey}.");
             originalWidth = imageInfo.Width;
             originalHeight = imageInfo.Height;
+            if ((long)originalWidth * originalHeight > _maxImagePixels)
+                throw new InvalidOperationException($"Image {sourceKey} exceeds the preview pixel limit.");
         }
 
         var escapedKey = string.Join("/", sourceKey.Split('/').Select(Uri.EscapeDataString));
@@ -201,9 +213,13 @@ public class StorageService : IStorageService
                 imgproxyUrl,
                 HttpCompletionOption.ResponseHeadersRead);
             response.EnsureSuccessStatusCode();
+            var contentLength = response.Content.Headers.ContentLength;
+            if (contentLength.HasValue && contentLength.Value > _maxPreviewBytes)
+                throw new InvalidOperationException($"Preview for {sourceKey} exceeds the size limit.");
 
             await using var preview = new MemoryStream();
-            await response.Content.CopyToAsync(preview);
+            await using var previewStream = await response.Content.ReadAsStreamAsync();
+            await CopyToWithLimitAsync(previewStream, preview, _maxPreviewBytes);
             preview.Position = 0;
             await UploadObjectAsync(previewKey, preview, "image/webp");
         }
@@ -257,8 +273,20 @@ public class StorageService : IStorageService
                 process.StartInfo.ArgumentList.Add(argument);
 
             process.Start();
-            var error = await process.StandardError.ReadToEndAsync();
-            await process.WaitForExitAsync();
+            var errorTask = process.StandardError.ReadToEndAsync();
+            using var timeout = new CancellationTokenSource(_videoPreviewTimeout);
+            try
+            {
+                await process.WaitForExitAsync(timeout.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                if (!process.HasExited)
+                    process.Kill(entireProcessTree: true);
+                await process.WaitForExitAsync();
+                throw new TimeoutException($"ffmpeg exceeded the {_videoPreviewTimeout.TotalSeconds}-second preview limit.");
+            }
+            var error = await errorTask;
             if (process.ExitCode != 0 || !File.Exists(outputPath))
                 throw new InvalidOperationException($"ffmpeg не смог создать превью видео: {error}");
 
@@ -269,6 +297,20 @@ public class StorageService : IStorageService
         finally
         {
             tempDirectory.Delete(true);
+        }
+    }
+
+    private static async Task CopyToWithLimitAsync(Stream source, Stream destination, long maxBytes)
+    {
+        var buffer = new byte[81920];
+        long copied = 0;
+        int read;
+        while ((read = await source.ReadAsync(buffer)) > 0)
+        {
+            copied += read;
+            if (copied > maxBytes)
+                throw new InvalidOperationException("Preview exceeds the size limit.");
+            await destination.WriteAsync(buffer.AsMemory(0, read));
         }
     }
 

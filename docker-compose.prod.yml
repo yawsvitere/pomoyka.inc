@@ -108,6 +108,7 @@ services:
       ConnectionStrings__DefaultConnection: "Host=postgres;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}"
       Minio__Endpoint: storage:9000
       Minio__PublicEndpoint: ${S3_PUBLIC_ENDPOINT:-${MINIO_PUBLIC_ENDPOINT:-localhost}}
+      Minio__PublicUseSSL: ${S3_PUBLIC_USE_SSL:-false}
       Minio__AccessKey: ${S3_ACCESS_KEY:-${MINIO_ROOT_USER:?S3_ACCESS_KEY is required}}
       Minio__SecretKey: ${S3_SECRET_KEY:-${MINIO_ROOT_PASSWORD:?S3_SECRET_KEY is required}}
       Minio__Bucket: ${S3_BUCKET:-${MINIO_BUCKET:?S3_BUCKET is required}}

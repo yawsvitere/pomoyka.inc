@@ -1,3 +1,4 @@
+import axios from "axios";
 import { apiClient } from "./client";
 import { getBrowserFileUrl } from "../utils/fileUrl";
 
@@ -28,6 +29,20 @@ export interface UserFile {
 export interface Library {
   folders: FileFolder[];
   files: UserFile[];
+}
+
+interface LibraryUploadMetadata {
+  fileName: string;
+  contentType: string;
+  sizeBytes: number;
+  width: number | null;
+  height: number | null;
+}
+
+export interface PreparedLibraryUpload extends LibraryUploadMetadata {
+  file: File;
+  storageKey: string;
+  uploadUrl: string;
 }
 export interface StorageQuota {
   usedBytes: number;
@@ -156,6 +171,68 @@ export async function uploadFile(
         if (event.total)
           onUploadProgress?.(Math.round((event.loaded / event.total) * 100));
       },
+    })
+  ).data;
+}
+
+export async function prepareLibraryUploads(
+  files: File[],
+  folderId: string | null,
+): Promise<PreparedLibraryUpload[]> {
+  const metadata = await Promise.all(
+    files.map(async (file): Promise<LibraryUploadMetadata> => {
+      const dimensions = await getMediaDimensions(file).catch(() => null);
+      return {
+        fileName: file.name,
+        contentType: file.type || "application/octet-stream",
+        sizeBytes: file.size,
+        width: dimensions?.width ?? null,
+        height: dimensions?.height ?? null,
+      };
+    }),
+  );
+  const response = await apiClient.post<{
+    files: { index: number; storageKey: string; uploadUrl: string }[];
+  }>("/api/files/library/batch-presign", { folderId, files: metadata });
+  const plans = response.data.files.sort((a, b) => a.index - b.index);
+  if (plans.length !== files.length)
+    throw new Error("Сервер вернул неполный пакет загрузки");
+  return plans.map((plan, index) => ({
+    ...metadata[index],
+    file: files[index],
+    storageKey: plan.storageKey,
+    uploadUrl: plan.uploadUrl,
+  }));
+}
+
+export async function uploadLibraryFileDirect(
+  upload: PreparedLibraryUpload,
+  onUploadProgress?: (percent: number) => void,
+) {
+  const target = new URL(upload.uploadUrl);
+  // In the normal one-domain deployment MinIO is published by nginx under
+  // /feed-files. Keep this request same-origin, including its scheme, so a
+  // browser cannot upgrade an HTTP localhost URL to unavailable HTTPS.
+  const uploadUrl = target.host === window.location.host
+    ? `${target.pathname}${target.search}`
+    : upload.uploadUrl;
+  await axios.put(uploadUrl, upload.file, {
+    headers: { "Content-Type": upload.contentType },
+    onUploadProgress: (event) => {
+      if (event.total)
+        onUploadProgress?.(Math.round((event.loaded / event.total) * 100));
+    },
+  });
+}
+
+export async function completeLibraryUploads(
+  folderId: string | null,
+  uploads: PreparedLibraryUpload[],
+) {
+  return (
+    await apiClient.post<UserFile[]>("/api/files/library/batch-complete", {
+      folderId,
+      files: uploads.map(({ file, uploadUrl, ...metadata }) => metadata),
     })
   ).data;
 }

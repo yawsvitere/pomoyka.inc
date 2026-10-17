@@ -16,11 +16,24 @@ interface AuthLayoutProps {
 }
 
 export function AuthLayout({ title, children }: AuthLayoutProps) {
+  const [showBackground, setShowBackground] = useState(
+    () => window.matchMedia("(min-width: 701px)").matches,
+  );
   const [loadedBackgroundImages, setLoadedBackgroundImages] = useState(
-    () => new Set([0]),
+    () => new Set(showBackground ? [0] : []),
   );
 
   useEffect(() => {
+    const media = window.matchMedia("(min-width: 701px)");
+    const updateBackgroundVisibility = () => setShowBackground(media.matches);
+    media.addEventListener("change", updateBackgroundVisibility);
+
+    return () => media.removeEventListener("change", updateBackgroundVisibility);
+  }, []);
+
+  useEffect(() => {
+    if (!showBackground) return;
+
     const timers = AUTH_BACKGROUND_IMAGES.slice(1).map((_, index) =>
       window.setTimeout(
         () => {
@@ -31,7 +44,7 @@ export function AuthLayout({ title, children }: AuthLayoutProps) {
     );
 
     return () => timers.forEach(window.clearTimeout);
-  }, []);
+  }, [showBackground]);
 
   return (
     <main className="auth-page">
@@ -40,7 +53,8 @@ export function AuthLayout({ title, children }: AuthLayoutProps) {
           <div className="auth-background" aria-hidden="true">
             {AUTH_BACKGROUND_IMAGES.map((image, index) => (
               <div className="auth-background-slide" key={image}>
-                {loadedBackgroundImages.has(index) && (
+                {showBackground &&
+                  (index === 0 || loadedBackgroundImages.has(index)) && (
                   <img
                     src={image}
                     alt=""

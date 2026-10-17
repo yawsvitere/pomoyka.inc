@@ -7,9 +7,8 @@ namespace Feed.Api.Services;
 
 public sealed class ImagePreviewBackgroundService : BackgroundService
 {
-    private readonly Channel<ImagePreviewJob> _jobs = Channel.CreateUnbounded<ImagePreviewJob>();
+    private readonly Channel<ImagePreviewJob> _jobs;
     private readonly ConcurrentDictionary<string, byte> _pending = new(StringComparer.Ordinal);
-    private readonly ConcurrentDictionary<string, byte> _completed = new(StringComparer.Ordinal);
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<ImagePreviewBackgroundService> _logger;
     private readonly IConfiguration _configuration;
@@ -22,33 +21,38 @@ public sealed class ImagePreviewBackgroundService : BackgroundService
         _scopeFactory = scopeFactory;
         _logger = logger;
         _configuration = configuration;
+        _jobs = Channel.CreateBounded<ImagePreviewJob>(new BoundedChannelOptions(
+            Math.Clamp(_configuration.GetValue<int?>("PreviewWorker:QueueCapacity") ?? 200, 10, 2_000))
+        {
+            FullMode = BoundedChannelFullMode.Wait,
+            SingleWriter = false,
+            SingleReader = false
+        });
     }
 
     public void Enqueue(string storageKey, string contentType)
     {
-        if (_completed.ContainsKey(storageKey) || !_pending.TryAdd(storageKey, 0))
+        if (!_pending.TryAdd(storageKey, 0))
             return;
 
         if (!_jobs.Writer.TryWrite(new ImagePreviewJob(storageKey, contentType)))
         {
             _pending.TryRemove(storageKey, out _);
-            throw new InvalidOperationException("Could not enqueue image preview generation.");
+            _logger.LogWarning("Preview queue is full; postponing preview for {StorageKey}", storageKey);
         }
     }
 
-    public void Forget(string storageKey) => _completed.TryRemove(storageKey, out _);
+    public void Forget(string storageKey) => _pending.TryRemove(storageKey, out _);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        await EnqueueMissingPreviewsAsync(stoppingToken);
-
         var workerCount = Math.Clamp(
             _configuration.GetValue<int?>("PreviewWorker:Concurrency") ?? 2,
             1,
             4);
         var workers = Enumerable.Range(0, workerCount)
             .Select(_ => ProcessQueueAsync(stoppingToken));
-        await Task.WhenAll(workers);
+        await Task.WhenAll(workers.Append(EnqueueMissingPreviewsAsync(stoppingToken)));
     }
 
     private async Task ProcessQueueAsync(CancellationToken stoppingToken)
@@ -78,7 +82,6 @@ public sealed class ImagePreviewBackgroundService : BackgroundService
                     }
                 }
 
-                _completed.TryAdd(job.StorageKey, 0);
                 var cleanup = scope.ServiceProvider
                     .GetRequiredService<ContentAddressedPreviewCleanupService>();
                 await cleanup.DeleteUnusedPreviewsAsync(
@@ -143,7 +146,7 @@ public sealed class ImagePreviewBackgroundService : BackgroundService
             {
                 if (storage.GetImagePreviewObjectKeys(file.StorageKey)
                     .Any(previewKey => !existingPreviews.Contains(previewKey)))
-                    Enqueue(file.StorageKey, file.ContentType);
+                    await EnqueueReconciledAsync(file.StorageKey, file.ContentType, cancellationToken);
             }
 
             var existingVideoPreviews = (await storage.ListObjectKeysAsync("previews/"))
@@ -151,7 +154,7 @@ public sealed class ImagePreviewBackgroundService : BackgroundService
             foreach (var file in videoFiles.DistinctBy(file => file.StorageKey))
             {
                 if (!existingVideoPreviews.Contains(storage.GetVideoPreviewObjectKey(file.StorageKey)))
-                    Enqueue(file.StorageKey, file.ContentType);
+                    await EnqueueReconciledAsync(file.StorageKey, file.ContentType, cancellationToken);
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -161,6 +164,25 @@ public sealed class ImagePreviewBackgroundService : BackgroundService
         catch (Exception exception)
         {
             _logger.LogError(exception, "Failed to enqueue existing image previews");
+        }
+    }
+
+    private async ValueTask EnqueueReconciledAsync(
+        string storageKey,
+        string contentType,
+        CancellationToken cancellationToken)
+    {
+        if (!_pending.TryAdd(storageKey, 0))
+            return;
+
+        try
+        {
+            await _jobs.Writer.WriteAsync(new ImagePreviewJob(storageKey, contentType), cancellationToken);
+        }
+        catch
+        {
+            _pending.TryRemove(storageKey, out _);
+            throw;
         }
     }
 

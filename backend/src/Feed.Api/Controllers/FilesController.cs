@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Net.Http.Headers;
+using Microsoft.AspNetCore.RateLimiting;
 using Amazon.S3;
 using System.Diagnostics;
 using System.Net;
@@ -119,6 +120,7 @@ public class FilesController : ControllerBase
     }
 
     [HttpGet("common")]
+    [EnableRateLimiting("catalog-api")]
     public async Task<ActionResult<object>> GetCommonLibrary()
     {
         var visibleAccessLevels = new[] { FileAccessLevel.Public, FileAccessLevel.Authenticated };
@@ -224,6 +226,7 @@ public class FilesController : ControllerBase
     }
 
     [HttpGet("pinterest")]
+    [EnableRateLimiting("pinterest-api")]
     public async Task<ActionResult<PinterestMediaPageDto>> GetPinterestMedia(
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 50,
@@ -266,7 +269,7 @@ public class FilesController : ControllerBase
                 continue;
 
             if (contentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase))
-                await _storage.CreateVideoPreviewAsync(key, contentType);
+                _imagePreviewBackgroundService.Enqueue(key, contentType);
 
             var hash = key["sha256/".Length..];
             media.Add(new PinterestMediaDto(
@@ -371,6 +374,101 @@ public class FilesController : ControllerBase
             file.ContentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase))
             _imagePreviewBackgroundService.Enqueue(storageKey, file.ContentType);
         return Ok(ToUserFileDto(userFile, folder));
+    }
+
+    [HttpPost("library/batch-presign")]
+    public async Task<ActionResult<LibraryBatchPresignResponse>> PresignLibraryBatch(
+        LibraryBatchPresignRequest request)
+    {
+        var userId = GetUserId();
+        if (userId == null) return Unauthorized();
+        if (request.Files.Count is < 1 or > 300 || request.Files.Any(file =>
+                file.SizeBytes is < 1 or > MaxFileSizeBytes ||
+                string.IsNullOrWhiteSpace(file.FileName) ||
+                string.IsNullOrWhiteSpace(file.ContentType)))
+            return BadRequest(new { message = "Можно подготовить от 1 до 300 файлов размером до 500 МБ" });
+
+        var folder = await GetOwnedFolderAsync(request.FolderId, userId.Value);
+        if (request.FolderId.HasValue && folder == null)
+            return NotFound(new { message = "Папка не найдена" });
+
+        var requestedBytes = request.Files.Sum(file => file.SizeBytes);
+        var quota = await GetAvailableQuotaAsync(userId.Value);
+        if (requestedBytes > quota.AvailableBytes)
+            return BadRequest(new { message = $"Лимит хранилища превышен. Доступно {FormatBytes(quota.AvailableBytes)}." });
+
+        var uploads = request.Files.Select((file, index) =>
+        {
+            var storageKey = BuildLibraryStorageKey(userId.Value, request.FolderId, Path.GetFileName(file.FileName));
+            return new LibraryPresignedUpload(index, storageKey,
+                _storage.GetPresignedUploadUrl(storageKey, file.ContentType));
+        }).ToList();
+        return Ok(new LibraryBatchPresignResponse(uploads));
+    }
+
+    [HttpPost("library/batch-complete")]
+    public async Task<ActionResult<List<UserFileDto>>> CompleteLibraryBatch(
+        CompleteLibraryBatchUploadRequest request)
+    {
+        var userId = GetUserId();
+        if (userId == null) return Unauthorized();
+        if (request.Files.Count is < 1 or > 300 || request.Files.Any(file =>
+                file.SizeBytes is < 1 or > MaxFileSizeBytes ||
+                string.IsNullOrWhiteSpace(file.FileName) ||
+                string.IsNullOrWhiteSpace(file.ContentType) ||
+                !IsOwnedLibraryStorageKey(file.StorageKey, userId.Value, request.FolderId)))
+            return BadRequest(new { message = "Некорректный пакет загрузки" });
+
+        if (request.Files.Select(file => file.StorageKey).Distinct(StringComparer.Ordinal).Count() != request.Files.Count)
+            return BadRequest(new { message = "В пакете есть повторяющиеся файлы" });
+
+        var folder = await GetOwnedFolderAsync(request.FolderId, userId.Value);
+        if (request.FolderId.HasValue && folder == null)
+            return NotFound(new { message = "Папка не найдена" });
+
+        var actualSizes = new Dictionary<string, long>(StringComparer.Ordinal);
+        foreach (var file in request.Files)
+        {
+            try
+            {
+                var metadata = await _storage.GetObjectMetadataAsync(file.StorageKey);
+                if (!string.Equals(metadata.Headers.ContentType, file.ContentType, StringComparison.OrdinalIgnoreCase))
+                    return BadRequest(new { message = $"Тип файла {file.FileName} не совпадает с загрузкой" });
+                actualSizes[file.StorageKey] = metadata.Headers.ContentLength;
+            }
+            catch (AmazonS3Exception exception) when (exception.StatusCode == HttpStatusCode.NotFound)
+            {
+                return BadRequest(new { message = $"Файл {file.FileName} не был загружен" });
+            }
+        }
+
+        var quota = await GetAvailableQuotaAsync(userId.Value);
+        var totalBytes = actualSizes.Values.Sum();
+        if (totalBytes > quota.AvailableBytes)
+            return BadRequest(new { message = $"Лимит хранилища превышен. Доступно {FormatBytes(quota.AvailableBytes)}." });
+
+        var createdFiles = request.Files.Select(file => new UserFile
+        {
+            OwnerId = userId.Value,
+            FolderId = request.FolderId,
+            FileName = Path.GetFileName(file.FileName),
+            StorageKey = file.StorageKey,
+            ContentType = file.ContentType,
+            SizeBytes = actualSizes[file.StorageKey],
+            Width = file.Width,
+            Height = file.Height,
+            AccessLevel = folder?.AccessLevel ?? FileAccessLevel.Authenticated
+        }).ToList();
+        _db.UserFiles.AddRange(createdFiles);
+        await _db.SaveChangesAsync();
+        if (request.FolderId.HasValue)
+            await _ogImageCache.InvalidateAsync(OgImageStorageCache.GalleryKey(request.FolderId.Value));
+        foreach (var file in createdFiles.Where(file =>
+                     file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase) ||
+                     file.ContentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase)))
+            _imagePreviewBackgroundService.Enqueue(file.StorageKey, file.ContentType);
+
+        return Ok(createdFiles.Select(file => ToUserFileDto(file, folder)).ToList());
     }
 
     [HttpDelete("folders/{id:guid}")]
@@ -484,11 +582,6 @@ public class FilesController : ControllerBase
             var sourceStorageKey = file.StorageKey;
             var destinationKey = BuildLibraryStorageKey(userId!.Value, request.FolderId, file.FileName);
             await _storage.CopyObjectAsync(file.StorageKey, destinationKey);
-            if (file.ContentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase))
-            {
-                await _storage.CreateVideoPreviewAsync(file.StorageKey, file.ContentType);
-                await _storage.CopyObjectAsync(_storage.GetVideoPreviewObjectKey(file.StorageKey), _storage.GetVideoPreviewObjectKey(destinationKey));
-            }
             if (!IsContentAddressedKey(file.StorageKey))
                 await _storage.DeleteObjectAsync(file.StorageKey);
 
@@ -503,7 +596,8 @@ public class FilesController : ControllerBase
                 await _ogImageCache.InvalidateAsync(OgImageStorageCache.GalleryKey(sourceFolderId.Value));
             if (request.FolderId.HasValue)
                 await _ogImageCache.InvalidateAsync(OgImageStorageCache.GalleryKey(request.FolderId.Value));
-            if (file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+            if (file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase) ||
+                file.ContentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase))
                 _imagePreviewBackgroundService.Enqueue(destinationKey, file.ContentType);
         }
 
@@ -605,6 +699,7 @@ public class FilesController : ControllerBase
     }
 
     [HttpGet("link-preview")]
+    [EnableRateLimiting("expensive-api")]
     public async Task<ActionResult<object>> GetLinkPreview(
         [FromQuery] string url,
         CancellationToken cancellationToken)
@@ -932,6 +1027,7 @@ public class FilesController : ControllerBase
     }
 
     [HttpPost("library/download-archive")]
+    [EnableRateLimiting("expensive-api")]
     public async Task<IActionResult> DownloadLibraryArchive(
         [FromBody] DownloadFilesArchiveRequest request)
     {
@@ -1290,7 +1386,6 @@ public class FilesController : ControllerBase
 
         await using var stream = file.OpenReadStream();
         var storageKey = await _storage.UploadDeduplicatedObjectAsync(stream, file.ContentType);
-        await _storage.CreateVideoPreviewAsync(storageKey, file.ContentType);
 
         var postFile = new PostFile
         {
@@ -1304,7 +1399,8 @@ public class FilesController : ControllerBase
         await _db.SaveChangesAsync();
         if (post.IsPostishka)
             await _ogImageCache.InvalidateAsync(OgImageStorageCache.PostKey(postId));
-        if (postFile.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+        if (postFile.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase) ||
+            postFile.ContentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase))
             _imagePreviewBackgroundService.Enqueue(storageKey, postFile.ContentType);
 
         var dto = new PostFileDto
@@ -1327,6 +1423,7 @@ public class FilesController : ControllerBase
     }
 
     [HttpPost("avatar")]
+    [EnableRateLimiting("expensive-api")]
     [Consumes("multipart/form-data")]
     [RequestSizeLimit(MaxAvatarSizeBytes)]
     public async Task<ActionResult<string>> UploadAvatar(
@@ -1363,6 +1460,7 @@ public class FilesController : ControllerBase
     }
 
     [HttpPost("banner")]
+    [EnableRateLimiting("expensive-api")]
     [Consumes("multipart/form-data")]
     [RequestSizeLimit(MaxBannerSizeBytes)]
     public async Task<ActionResult<string>> UploadBanner(IFormFile file)
@@ -1385,6 +1483,7 @@ public class FilesController : ControllerBase
     }
 
     [HttpPost("invite-image")]
+    [EnableRateLimiting("expensive-api")]
     [Consumes("multipart/form-data")]
     public async Task<ActionResult<string>> UploadInviteImage([FromForm] Guid inviteId, IFormFile file)
     {
@@ -1927,6 +2026,32 @@ public class FilesController : ControllerBase
 
     private static string BuildLibraryStorageKey(Guid userId, Guid? folderId, string fileName) =>
         $"library/{userId:D}/{(folderId.HasValue ? $"folders/{folderId.Value:D}" : "root")}/{Guid.NewGuid():N}_{fileName}";
+
+    private static bool IsOwnedLibraryStorageKey(string storageKey, Guid userId, Guid? folderId)
+    {
+        var prefix = $"library/{userId:D}/{(folderId.HasValue ? $"folders/{folderId.Value:D}" : "root")}/";
+        return storageKey.StartsWith(prefix, StringComparison.Ordinal) &&
+            storageKey.Length > prefix.Length &&
+            !storageKey[prefix.Length..].Contains('/', StringComparison.Ordinal);
+    }
+
+    private async Task<FileFolder?> GetOwnedFolderAsync(Guid? folderId, Guid userId) =>
+        folderId.HasValue
+            ? await _db.FileFolders.FirstOrDefaultAsync(folder => folder.Id == folderId && folder.OwnerId == userId)
+            : null;
+
+    private async Task<(long AvailableBytes, long QuotaBytes, long UsedBytes)> GetAvailableQuotaAsync(Guid userId)
+    {
+        var user = await _db.Users.AsNoTracking().FirstOrDefaultAsync(item => item.Id == userId)
+            ?? throw new InvalidOperationException("User not found");
+        var settings = await _db.StorageSettings.AsNoTracking()
+            .FirstOrDefaultAsync(item => item.Id == StorageSettings.SingletonId);
+        var quotaBytes = user.StorageQuotaBytes ?? settings?.DefaultUserQuotaBytes ?? new StorageSettings().DefaultUserQuotaBytes;
+        var usedBytes = await _db.UserFiles.AsNoTracking()
+            .Where(file => file.OwnerId == userId)
+            .SumAsync(file => (long?)file.SizeBytes) ?? 0;
+        return (Math.Max(0, quotaBytes - usedBytes), quotaBytes, usedBytes);
+    }
 
     private IEnumerable<string> GetDeletableObjectKeys(IEnumerable<FileStorageObject> files)
     {

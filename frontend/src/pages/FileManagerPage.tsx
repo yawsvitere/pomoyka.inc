@@ -583,6 +583,11 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
     });
     try {
       const fileProgress = uploadFiles.map(() => 0);
+      const preparedUploads = await filesApi.prepareLibraryUploads(
+        uploadFiles,
+        folderId,
+      );
+      const successfullyUploaded: filesApi.PreparedLibraryUpload[] = [];
       let nextFileIndex = 0;
       let completed = 0;
       const updateProgress = (currentFile: string) => {
@@ -600,15 +605,16 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
         while (nextFileIndex < uploadFiles.length) {
           const index = nextFileIndex;
           nextFileIndex += 1;
-          const file = uploadFiles[index];
-          updateProgress(file.name);
-          await filesApi.uploadFile(file, folderId, (filePercent) => {
+          const upload = preparedUploads[index];
+          updateProgress(upload.file.name);
+          await filesApi.uploadLibraryFileDirect(upload, (filePercent) => {
             fileProgress[index] = filePercent;
-            updateProgress(file.name);
+            updateProgress(upload.file.name);
           });
+          successfullyUploaded.push(upload);
           fileProgress[index] = 100;
           completed += 1;
-          updateProgress(file.name);
+          updateProgress(upload.file.name);
         }
       };
       const results = await Promise.allSettled(
@@ -619,10 +625,13 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
       const failedUpload = results.find(
         (result) => result.status === "rejected",
       );
+      if (successfullyUploaded.length > 0)
+        await filesApi.completeLibraryUploads(folderId, successfullyUploaded);
+      if (successfullyUploaded.length > 0) await reload();
       if (failedUpload?.status === "rejected") {
         throw failedUpload.reason;
       }
-      if (await reload()) {
+      if (successfullyUploaded.length > 0) {
         notify(
           "success",
           uploadFiles.length === 1

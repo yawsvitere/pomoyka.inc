@@ -21,15 +21,18 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [user, setUser] = useState<User | null>(() => {
+    try {
+      const savedUser = localStorage.getItem("user");
+      return savedUser ? (JSON.parse(savedUser) as User) : null;
+    } catch {
+      localStorage.removeItem("user");
+      return null;
+    }
+  });
+  const isLoading = false;
 
   useEffect(() => {
-    const savedUser = localStorage.getItem("user");
-    if (savedUser) {
-      setUser(JSON.parse(savedUser));
-    }
-    setIsLoading(false);
 
     const handleLogout = () => {
       setUser(null);

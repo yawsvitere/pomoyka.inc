@@ -84,6 +84,9 @@ services:
         aws --endpoint-url "$$S3_ENDPOINT" s3api put-bucket-policy \
           --bucket "$$S3_BUCKET" \
           --policy "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":\"*\",\"Action\":\"s3:GetObject\",\"Resource\":\"arn:aws:s3:::$${S3_BUCKET}/*\"}]}"
+        aws --endpoint-url "$$S3_ENDPOINT" s3api put-bucket-cors \
+          --bucket "$$S3_BUCKET" \
+          --cors-configuration 'CORSRules=[{AllowedOrigins=["http://localhost:5173"],AllowedMethods=["GET","HEAD","PUT"],AllowedHeaders=["*"],ExposeHeaders=["ETag"]}]'
     restart: "no"
 
   imgproxy:
@@ -126,6 +129,7 @@ services:
       ConnectionStrings__DefaultConnection: "Host=postgres;Port=5432;Database=${POSTGRES_DB:?POSTGRES_DB is required};Username=${POSTGRES_USER:?POSTGRES_USER is required};Password=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}"
       Minio__Endpoint: "storage:9000"
       Minio__PublicEndpoint: "localhost:9000"
+      Minio__PublicUseSSL: "false"
       Minio__AccessKey: ${S3_ACCESS_KEY:-${MINIO_ROOT_USER:?S3_ACCESS_KEY is required}}
       Minio__SecretKey: ${S3_SECRET_KEY:-${MINIO_ROOT_PASSWORD:?S3_SECRET_KEY is required}}
       Minio__Bucket: ${S3_BUCKET:-${MINIO_BUCKET:?S3_BUCKET is required}}

@@ -6,4 +6,26 @@
 @import "./styles/core/tooltip.css";
 @import "./styles/core/spinner.css";
 @import "./styles/core/alert-dialog.css";
-@import "./styles/components/sidebar.css";
+
+.app-loading {
+  display: grid;
+  width: 100%;
+  min-height: 100vh;
+  place-items: center;
+  background: var(--color-bg);
+}
+
+.app-loading__mark {
+  width: 28px;
+  height: 28px;
+  border: 2px solid var(--color-border);
+  border-top-color: var(--color-text);
+  border-radius: 50%;
+  animation: app-loading-spin 700ms linear infinite;
+}
+
+@keyframes app-loading-spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
