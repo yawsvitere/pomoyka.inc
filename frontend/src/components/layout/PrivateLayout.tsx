@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { useState } from "react";
+import { useLocation } from "react-router-dom";
 import { Header } from "./Header";
 import { NavigationSidebar } from "./NavigationSidebar";
 import { MobileBottomNavigation } from "./MobileBottomNavigation";
@@ -9,6 +10,7 @@ import "../../styles/components/sidebar.css";
 
 export function PrivateLayout({ children }: { children: ReactNode }) {
   const { user } = useAuth();
+  const { pathname } = useLocation();
   const [welcomeOpen, setWelcomeOpen] = useState(() => !user?.hasSeenWelcome);
 
   return (
@@ -16,7 +18,11 @@ export function PrivateLayout({ children }: { children: ReactNode }) {
       <Header onWelcomeOpen={() => setWelcomeOpen(true)} />
       <NavigationSidebar onWelcomeOpen={() => setWelcomeOpen(true)} />
       <main className="app-content">
-        <div className="content-window">{children}</div>
+        <div
+          className={`content-window${pathname === "/" || pathname === "/pinterest" ? " content-window--hide-scrollbar" : ""}`}
+        >
+          {children}
+        </div>
       </main>
       <MobileBottomNavigation />
       <WelcomeModal
