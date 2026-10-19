@@ -87,7 +87,10 @@ public class AdminController : ControllerBase
                 StorageQuotaBytes = user.StorageQuotaBytes,
                 EffectiveStorageQuotaBytes = GetEffectiveQuotaBytes(user, storageSummary.DefaultUserQuotaBytes),
                 IsOnline = IsOnline(user),
-                LastSeenAt = user.LastSeenAt
+                LastSeenAt = user.LastSeenAt,
+                IsBanned = IsActivelyBanned(user),
+                BanUntil = IsActivelyBanned(user) ? user.BanUntil : null,
+                BanReason = IsActivelyBanned(user) ? user.BanReason : null
             });
         }
 
@@ -131,6 +134,67 @@ public class AdminController : ControllerBase
             return BadRequest(result.Errors);
 
         return Ok(new { quotaBytes = user.StorageQuotaBytes });
+    }
+
+    [HttpPost("users/{id:guid}/ban")]
+    public async Task<ActionResult<BanStatusDto>> BanUser(
+        Guid id,
+        [FromBody] BanUserRequest request)
+    {
+        if (!Guid.TryParse(User.FindFirstValue("sub"), out var adminId) || adminId == id)
+            return BadRequest(new { message = "Нельзя заблокировать собственный аккаунт" });
+
+        var user = await _userManager.FindByIdAsync(id.ToString());
+        if (user == null)
+            return NotFound(new { message = "Пользователь не найден" });
+
+        var reason = request.Reason.Trim();
+        if (string.IsNullOrWhiteSpace(reason))
+            return BadRequest(new { message = "Укажи причину блокировки" });
+
+        user.IsBanned = true;
+        user.BanUntil = request.DurationHours.HasValue
+            ? DateTime.UtcNow.AddHours(request.DurationHours.Value)
+            : null;
+        user.BanReason = reason;
+
+        var result = await _userManager.UpdateAsync(user);
+        if (!result.Succeeded)
+            return BadRequest(result.Errors);
+
+        var status = new BanStatusDto
+        {
+            IsBanned = true,
+            BanUntil = user.BanUntil,
+            BanReason = user.BanReason
+        };
+        await _feedHub.Clients
+            .Group($"user-{user.Id}")
+            .SendAsync("UserBanned", status);
+
+        return Ok(status);
+    }
+
+    [HttpDelete("users/{id:guid}/ban")]
+    public async Task<ActionResult<BanStatusDto>> UnbanUser(Guid id)
+    {
+        var user = await _userManager.FindByIdAsync(id.ToString());
+        if (user == null)
+            return NotFound(new { message = "Пользователь не найден" });
+
+        user.IsBanned = false;
+        user.BanUntil = null;
+        user.BanReason = null;
+
+        var result = await _userManager.UpdateAsync(user);
+        if (!result.Succeeded)
+            return BadRequest(result.Errors);
+
+        await _feedHub.Clients
+            .Group($"user-{user.Id}")
+            .SendAsync("UserUnbanned");
+
+        return Ok(new BanStatusDto { IsBanned = false });
     }
 
     [HttpPut("users/{id:guid}/profile")]
@@ -508,6 +572,9 @@ public class AdminController : ControllerBase
 
         return DateTime.UtcNow - user.LastSeenAt.Value <= TimeSpan.FromMinutes(2);
     }
+
+    private static bool IsActivelyBanned(AppUser user) =>
+        user.IsBanned && (!user.BanUntil.HasValue || user.BanUntil.Value > DateTime.UtcNow);
 
     private async Task<bool> HasAnotherAdminAsync(Guid userId)
     {

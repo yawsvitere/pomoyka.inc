@@ -133,6 +133,10 @@ builder.Services.AddAuthentication(options =>
                 if (identity == null)
                     return;
 
+                if (user.IsBanned &&
+                    (!user.BanUntil.HasValue || user.BanUntil.Value > DateTime.UtcNow))
+                    identity.AddClaim(new Claim("pomoyka:banned", "true"));
+
                 foreach (var claim in identity.FindAll(ClaimTypes.Role).ToList())
                     identity.RemoveClaim(claim);
                 foreach (var claim in identity.FindAll("role").ToList())
@@ -356,6 +360,24 @@ if (app.Environment.IsDevelopment())
 
 app.UseCors("Frontend");
 app.UseAuthentication();
+app.Use(async (context, next) =>
+{
+    var isBanStatusEndpoint = context.Request.Path.Equals(
+        "/api/auth/ban-status",
+        StringComparison.OrdinalIgnoreCase);
+    if (!isBanStatusEndpoint &&
+        context.User.HasClaim("pomoyka:banned", "true"))
+    {
+        context.Response.StatusCode = StatusCodes.Status403Forbidden;
+        await context.Response.WriteAsJsonAsync(new
+        {
+            message = "Аккаунт заблокирован"
+        });
+        return;
+    }
+
+    await next();
+});
 app.UseRateLimiter();
 app.UseAuthorization();
 

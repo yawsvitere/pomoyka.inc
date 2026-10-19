@@ -57,6 +57,13 @@ public class UserDto
     public DateTime? LastSeenAt { get; set; }
 }
 
+public class BanStatusDto
+{
+    public bool IsBanned { get; set; }
+    public DateTime? BanUntil { get; set; }
+    public string? BanReason { get; set; }
+}
+
 public class UpdateProfileRequest
 {
     [Required, MinLength(2), MaxLength(50)]

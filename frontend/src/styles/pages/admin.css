@@ -723,6 +723,53 @@
   flex: 0 0 auto;
 }
 
+.admin-ban-label {
+  color: var(--color-danger);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.admin-ban-status,
+.admin-user-ban {
+  margin: 0 0 14px;
+  padding: 14px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-deep);
+}
+
+.admin-ban-status {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  color: var(--color-danger);
+  font-size: 13px;
+}
+
+.admin-ban-status span {
+  color: var(--color-text-muted);
+}
+
+.admin-user-ban {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.admin-user-ban > div:not(.admin-actions) {
+  width: min(100%, 420px);
+}
+
+.admin-user-ban .input {
+  width: 100%;
+}
+
+.admin-user-ban .admin-ban-reason {
+  min-height: 78px;
+  resize: vertical;
+}
+
 .admin-user-panel {
   display: flex;
   flex-wrap: wrap;

@@ -29,6 +29,21 @@ public class AdminUserDto
     public bool IsOnline { get; set; }
 
     public DateTime? LastSeenAt { get; set; }
+
+    public bool IsBanned { get; set; }
+
+    public DateTime? BanUntil { get; set; }
+
+    public string? BanReason { get; set; }
+}
+
+public class BanUserRequest
+{
+    [Range(0.1, 24 * 365)]
+    public double? DurationHours { get; set; }
+
+    [Required, MaxLength(1000)]
+    public string Reason { get; set; } = string.Empty;
 }
 
 public class CreateInviteCodeRequest

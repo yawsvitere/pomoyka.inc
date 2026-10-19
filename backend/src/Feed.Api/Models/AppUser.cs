@@ -12,6 +12,9 @@ public class AppUser : IdentityUser<Guid>
     public string? BannerUrl { get; set; }
     public string? About { get; set; }
     public bool HasSeenWelcome { get; set; }
+    public bool IsBanned { get; set; }
+    public DateTime? BanUntil { get; set; }
+    public string? BanReason { get; set; }
     public long? StorageQuotaBytes { get; set; }
     public DateTime? LastSeenAt { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

@@ -14,6 +14,15 @@ export interface AdminUser {
   effectiveStorageQuotaBytes: number;
   isOnline: boolean;
   lastSeenAt?: string | null;
+  isBanned: boolean;
+  banUntil: string | null;
+  banReason: string | null;
+}
+
+export interface AdminBanStatus {
+  isBanned: boolean;
+  banUntil: string | null;
+  banReason: string | null;
 }
 
 export interface AdminStorageSummary {
@@ -59,6 +68,25 @@ export async function updateUserStorageQuota(
     {
       quotaBytes,
     },
+  );
+  return data;
+}
+
+export async function banUser(
+  id: string,
+  durationHours: number | null,
+  reason: string,
+) {
+  const { data } = await apiClient.post<AdminBanStatus>(
+    `/api/admin/users/${id}/ban`,
+    { durationHours, reason },
+  );
+  return data;
+}
+
+export async function unbanUser(id: string) {
+  const { data } = await apiClient.delete<AdminBanStatus>(
+    `/api/admin/users/${id}/ban`,
   );
   return data;
 }

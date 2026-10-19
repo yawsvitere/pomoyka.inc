@@ -1,65 +1,236 @@
+@import url("https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,200;12..96,800&display=swap");
+
 .error-page {
+  --mx: 0.5;
+  --my: 0.5;
+  --sx: 50%;
+  --sy: 50%;
+
+  position: relative;
   display: grid;
   min-height: 100vh;
+  min-height: 100dvh;
   place-items: center;
-  padding: 32px 20px;
-  background: var(--color-bg);
-  color: var(--color-text);
+  padding: 40px 20px;
+  overflow: hidden;
+  isolation: isolate;
+  background: #050405;
+  color: #f3ece8;
+  font-family: "Bricolage Grotesque", system-ui, sans-serif;
+}
+
+.error-page-aura {
+  position: absolute;
+  inset: -25%;
+  z-index: -2;
+  width: 150%;
+  height: 150%;
+  object-fit: cover;
+  filter: blur(90px) saturate(2.2) brightness(0.85);
+  opacity: 0.8;
+  transform: translate(
+    calc((var(--mx) - 0.5) * -60px),
+    calc((var(--my) - 0.5) * -40px)
+  );
+  transition: transform 1.2s cubic-bezier(0.2, 0.7, 0.2, 1);
+  animation: ep-drift 38s ease-in-out infinite alternate;
+}
+
+.error-page::before,
+.error-page::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.error-page::before {
+  z-index: -1;
+  background: radial-gradient(
+    ellipse at 50% 45%,
+    transparent 20%,
+    rgba(5, 4, 5, 0.9) 85%
+  );
+}
+
+.error-page::after {
+  z-index: 1;
+  opacity: 0.22;
+  mix-blend-mode: soft-light;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 .5  0 0 0 0 .5  0 0 0 0 .5  0 0 0 1.4 -.2'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
 }
 
 .error-page-content {
-  max-width: 560px;
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: min(100%, 1100px);
   text-align: center;
 }
 
 .error-page-status {
-  display: block;
-  color: rgb(255, 181, 233);
-  font-size: clamp(72px, 5vw, 144px);
-  font-weight: 700;
-  line-height: 0.9;
-  letter-spacing: -0.06em;
+  display: grid;
+  font-size: clamp(130px, 31vw, 480px);
+  font-weight: 800;
+  font-variation-settings: "opsz" 96;
+  line-height: 0.82;
+  letter-spacing: -0.045em;
+  filter: drop-shadow(0 30px 60px rgba(0, 0, 0, 0.55));
+  user-select: none;
+  animation: ep-in 1.8s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
 
+.ep-digits {
+  grid-area: 1 / 1;
+  padding: 0.04em 0.06em;
+  color: transparent;
+  background-image: var(--ep-img);
+  background-size: 130% auto;
+  background-position: calc(30% + var(--mx) * 40%) calc(35% + var(--my) * 30%);
+  background-repeat: no-repeat;
+  -webkit-background-clip: text;
+  background-clip: text;
 }
 
 .error-page-image {
-  display: block;
-  width: min(100%, 520px);
-  max-height: 520px;
-  margin: 12px auto 0;
+  width: min(100%, 320px);
+  max-height: 44vh;
   object-fit: contain;
 }
 
-.error-page-audio {
-  display: block;
-  width: min(100%, 420px);
-  margin: 16px auto 0;
+.is-locked .error-page-aura {
+  filter: blur(90px) grayscale(0.85) brightness(0.6);
+  opacity: 0.55;
+}
+
+.is-locked .ep-digits:not(.ep-reveal) {
+  filter: grayscale(1) brightness(0.32) contrast(1.15);
+}
+
+.is-locked .ep-reveal {
+  -webkit-mask-image: radial-gradient(
+    circle clamp(90px, 15vw, 220px) at var(--sx) var(--sy),
+    #000 25%,
+    transparent 100%
+  );
+  mask-image: radial-gradient(
+    circle clamp(90px, 15vw, 220px) at var(--sx) var(--sy),
+    #000 25%,
+    transparent 100%
+  );
+}
+
+.is-locked h1 {
+  letter-spacing: 0.08em;
 }
 
 .error-page h1 {
-  margin: 0px;
-  font-size: clamp(24px, 4vw, 36px);
+  margin: clamp(16px, 3vh, 36px) 0 0;
+  font-size: clamp(20px, 2.4vw, 28px);
+  font-weight: 200;
+  letter-spacing: 0.02em;
+  text-shadow: 0 2px 24px rgba(0, 0, 0, 0.6);
 }
 
 .error-page p {
-  margin: 12px 0 28px;
-  color: var(--color-text-secondary);
+  margin: 10px 0 0;
+  max-width: 38ch;
+  font-size: 14px;
+  line-height: 1.6;
+  opacity: 0.7;
 }
 
-.error-page a {
-  color: var(--color-text);
-  text-decoration: underline;
-  text-underline-offset: 4px;
-}
 .error-page-audio {
-  display: block;
-  width: min(100%, 920px);
+  width: min(100%, 300px);
+  margin-top: 28px;
+  opacity: 0.6;
+  transition: opacity 0.4s ease;
+}
 
+.error-page-audio:hover,
+.error-page-audio:focus-within {
+  opacity: 1;
 }
 
 .error-page-audio .media-default-skin {
-  min-height: 64px;
-  border-radius: 12px;
+  min-height: 48px;
+  border-radius: 999px;
   color-scheme: dark;
 }
 
+.error-page-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 24px;
+  margin-top: 26px;
+  font-size: 14px;
+}
+
+.error-page a,
+.error-page-actions button {
+  padding: 0 0 4px;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  text-decoration: none;
+  opacity: 0.65;
+  background: linear-gradient(currentColor, currentColor) no-repeat 0 100% / 0
+    1px;
+  cursor: pointer;
+  transition:
+    opacity 0.3s ease,
+    background-size 0.4s ease;
+}
+
+.error-page a:hover,
+.error-page a:focus-visible,
+.error-page-actions button:hover,
+.error-page-actions button:focus-visible {
+  opacity: 1;
+  background-size: 100% 1px;
+  outline: none;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@keyframes ep-in {
+  from {
+    opacity: 0;
+    filter: blur(24px) drop-shadow(0 30px 60px rgba(0, 0, 0, 0.55));
+    letter-spacing: 0.05em;
+  }
+  to {
+    opacity: 1;
+    filter: blur(0) drop-shadow(0 30px 60px rgba(0, 0, 0, 0.55));
+    letter-spacing: -0.045em;
+  }
+}
+
+@keyframes ep-drift {
+  from {
+    rotate: -4deg;
+    scale: 1;
+  }
+  to {
+    rotate: 5deg;
+    scale: 1.12;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .error-page-status,
+  .error-page-aura {
+    animation: none;
+    transition: none;
+  }
+}

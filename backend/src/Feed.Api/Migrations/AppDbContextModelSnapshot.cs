@@ -37,6 +37,12 @@ namespace Feed.Api.Migrations
                     b.Property<string>("AvatarUrl")
                         .HasColumnType("text");
 
+                    b.Property<string>("BanReason")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("BanUntil")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("BannerUrl")
                         .HasColumnType("text");
 
@@ -59,6 +65,9 @@ namespace Feed.Api.Migrations
                         .HasColumnType("boolean");
 
                     b.Property<bool>("HasSeenWelcome")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsBanned")
                         .HasColumnType("boolean");
 
                     b.Property<DateTime?>("LastSeenAt")

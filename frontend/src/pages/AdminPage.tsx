@@ -19,6 +19,14 @@ const POLL_DURATIONS = [
   { label: "3 дня", hours: 72 },
   { label: "7 дней", hours: 168 },
 ];
+const BAN_DURATIONS = [
+  { value: "1", label: "1 час" },
+  { value: "24", label: "24 часа" },
+  { value: "168", label: "7 дней" },
+  { value: "720", label: "30 дней" },
+  { value: "custom", label: "Свой срок" },
+  { value: "permanent", label: "Бессрочно" },
+];
 
 type PostFilter = "all" | "on" | "off";
 
@@ -404,6 +412,11 @@ export function AdminPage() {
   const [generatedPasswords, setGeneratedPasswords] = useState<
     Record<string, string>
   >({});
+  const [banPanelUserId, setBanPanelUserId] = useState<string | null>(null);
+  const [banDuration, setBanDuration] = useState("24");
+  const [customBanHours, setCustomBanHours] = useState("24");
+  const [banReason, setBanReason] = useState("");
+  const [savingBanUserId, setSavingBanUserId] = useState<string | null>(null);
 
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const [confirm, setConfirm] = useState<ConfirmState>(null);
@@ -588,6 +601,68 @@ export function AdminPage() {
       notify("error", "Не удалось сгенерировать пароль");
     } finally {
       setResettingPasswordUserId(null);
+    }
+  }
+
+  function openBanPanel(userId: string) {
+    setBanPanelUserId(userId);
+    setBanDuration("24");
+    setCustomBanHours("24");
+    setBanReason("");
+  }
+
+  async function banUser(user: AdminUser) {
+    const reason = banReason.trim();
+    if (!reason) {
+      notify("error", "Укажи причину блокировки");
+      return;
+    }
+
+    const durationHours =
+      banDuration === "permanent"
+        ? null
+        : Number(banDuration === "custom" ? customBanHours : banDuration);
+    if (
+      durationHours !== null &&
+      (!Number.isFinite(durationHours) ||
+        durationHours < 0.1 ||
+        durationHours > 24 * 365)
+    ) {
+      notify("error", "Срок должен быть от 0,1 до 8760 часов");
+      return;
+    }
+
+    try {
+      setSavingBanUserId(user.id);
+      const status = await adminApi.banUser(user.id, durationHours, reason);
+      setUsers((current) =>
+        current.map((item) =>
+          item.id === user.id ? { ...item, ...status } : item,
+        ),
+      );
+      setBanPanelUserId(null);
+      notify("success", "Пользователь заблокирован");
+    } catch {
+      notify("error", "Не удалось заблокировать пользователя");
+    } finally {
+      setSavingBanUserId(null);
+    }
+  }
+
+  async function unbanUser(user: AdminUser) {
+    try {
+      setSavingBanUserId(user.id);
+      const status = await adminApi.unbanUser(user.id);
+      setUsers((current) =>
+        current.map((item) =>
+          item.id === user.id ? { ...item, ...status } : item,
+        ),
+      );
+      notify("success", "Блокировка снята");
+    } catch {
+      notify("error", "Не удалось снять блокировку");
+    } finally {
+      setSavingBanUserId(null);
     }
   }
 
@@ -1034,6 +1109,11 @@ export function AdminPage() {
                           {user.displayName}
                         </strong>
                         <span>{user.email}</span>
+                        {user.isBanned && (
+                          <span className="admin-ban-label">
+                            Заблокирован
+                          </span>
+                        )}
                       </div>
                     </Link>
                     <UsageBar used={user.storageUsedBytes} quota={quota} />
@@ -1452,8 +1532,121 @@ export function AdminPage() {
                       >
                         <KeyIcon />
                       </button>
+                      {user.isBanned ? (
+                        <button
+                          className="btn btn-sm btn-secondary"
+                          disabled={savingBanUserId === user.id}
+                          onClick={() => void unbanUser(user)}
+                        >
+                          {savingBanUserId === user.id
+                            ? "Снимаю..."
+                            : "Разблокировать"}
+                        </button>
+                      ) : (
+                        <button
+                          className="btn btn-sm btn-secondary"
+                          onClick={() =>
+                            banPanelUserId === user.id
+                              ? setBanPanelUserId(null)
+                              : openBanPanel(user.id)
+                          }
+                        >
+                          {banPanelUserId === user.id
+                            ? "Отмена"
+                            : "Заблокировать"}
+                        </button>
+                      )}
                     </div>
                   </div>
+
+                  {user.isBanned && (
+                    <div className="admin-ban-status">
+                      <strong>
+                        {user.banUntil
+                          ? `Блокировка до ${new Date(user.banUntil).toLocaleString("ru-RU")}`
+                          : "Бессрочная блокировка"}
+                      </strong>
+                      <span>Причина: {user.banReason}</span>
+                    </div>
+                  )}
+
+                  {banPanelUserId === user.id && !user.isBanned && (
+                    <div className="admin-user-ban">
+                      <div>
+                        <label className="label-field" htmlFor={`ban-duration-${user.id}`}>
+                          Срок блокировки
+                        </label>
+                        <select
+                          id={`ban-duration-${user.id}`}
+                          className="input"
+                          value={banDuration}
+                          onChange={(event) => setBanDuration(event.target.value)}
+                        >
+                          {BAN_DURATIONS.map((preset) => (
+                            <option key={preset.value} value={preset.value}>
+                              {preset.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      {banDuration === "custom" && (
+                        <div>
+                          <label
+                            className="label-field"
+                            htmlFor={`ban-custom-hours-${user.id}`}
+                          >
+                            Срок в часах (до 8760)
+                          </label>
+                          <input
+                            id={`ban-custom-hours-${user.id}`}
+                            className="input"
+                            type="number"
+                            min="0.1"
+                            max="8760"
+                            step="0.1"
+                            value={customBanHours}
+                            onChange={(event) =>
+                              setCustomBanHours(event.target.value)
+                            }
+                          />
+                        </div>
+                      )}
+                      <div>
+                        <label
+                          className="label-field"
+                          htmlFor={`ban-reason-${user.id}`}
+                        >
+                          Причина блокировки
+                        </label>
+                        <textarea
+                          id={`ban-reason-${user.id}`}
+                          className="input admin-ban-reason"
+                          maxLength={1000}
+                          rows={3}
+                          value={banReason}
+                          onChange={(event) => setBanReason(event.target.value)}
+                          placeholder="Напиши причину вручную"
+                        />
+                      </div>
+                      <div className="admin-actions">
+                        <button
+                          className="btn btn-primary"
+                          disabled={savingBanUserId === user.id}
+                          onClick={() => void banUser(user)}
+                        >
+                          {savingBanUserId === user.id
+                            ? "Блокирую..."
+                            : "Подтвердить блокировку"}
+                        </button>
+                        <button
+                          className="btn btn-ghost"
+                          onClick={() => setBanPanelUserId(null)}
+                        >
+                          Отмена
+                        </button>
+                      </div>
+                    </div>
+                  )}
 
                   {expanded && (
                     <div className="admin-user-panel">

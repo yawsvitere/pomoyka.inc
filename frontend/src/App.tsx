@@ -149,6 +149,60 @@ function GuestRoute({ children }: { children: React.ReactNode }) {
 }
 
 function AppRoutes() {
+  const {
+    user,
+    banStatus,
+    isBanStatusChecked,
+    banStatusError,
+    logout,
+  } = useAuth();
+
+  if (user && !isBanStatusChecked) {
+    return <AppLoading />;
+  }
+
+  if (user && banStatusError) {
+    return (
+      <Suspense fallback={<AppLoading />}>
+        <ErrorPage
+          status={500}
+          title="Не удалось проверить доступ"
+          description="Обнови страницу, чтобы проверить статус аккаунта."
+          showHomeLink={false}
+          onLogout={logout}
+        />
+      </Suspense>
+    );
+  }
+
+  if (user && banStatus) {
+    const expiry = banStatus.bannedUntil
+      ? `Блокировка действует до ${new Date(banStatus.bannedUntil).toLocaleString("ru-RU")}.`
+      : "Блокировка бессрочная.";
+    return (
+      <Suspense fallback={<AppLoading />}>
+        <ErrorPage
+          status={403}
+          title="Аккаунт заблокирован"
+          description={
+            banStatus.reason ? (
+              <>
+                Причина: {banStatus.reason}
+                <br />
+                {expiry}
+              </>
+            ) : (
+              expiry
+            )
+          }
+          showStatus={false}
+          showHomeLink={false}
+          onLogout={logout}
+        />
+      </Suspense>
+    );
+  }
+
   return (
     <Suspense fallback={<AppLoading />}>
       <Routes>

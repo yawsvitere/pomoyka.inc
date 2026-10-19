@@ -184,6 +184,28 @@ public class AuthController : ControllerBase
         return Ok(ToDto(user));
     }
 
+    [HttpGet("ban-status")]
+    [Authorize]
+    public async Task<ActionResult<BanStatusDto>> BanStatus()
+    {
+        var userId = GetCurrentUserId();
+        if (userId == null)
+            return Unauthorized();
+
+        var user = await _userManager.FindByIdAsync(userId.Value.ToString());
+        if (user == null)
+            return NotFound();
+
+        var isBanned = user.IsBanned &&
+            (!user.BanUntil.HasValue || user.BanUntil.Value > DateTime.UtcNow);
+        return Ok(new BanStatusDto
+        {
+            IsBanned = isBanned,
+            BanUntil = isBanned ? user.BanUntil : null,
+            BanReason = isBanned ? user.BanReason : null
+        });
+    }
+
     [HttpPost("heartbeat")]
     [Authorize]
     public async Task<ActionResult> Heartbeat()
