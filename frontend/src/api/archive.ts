@@ -7,6 +7,7 @@ export interface ArchiveDay {
   postishkaCount: number;
   participantCount: number;
   closedAt: string;
+  participants: ArchiveDayParticipant[];
 }
 
 export interface ArchiveCalendarMonth {
@@ -42,6 +43,12 @@ export interface ArchiveDayDetail {
     total: number;
     totalPages: number;
   };
+}
+
+export interface ArchiveDayParticipant {
+  id: string;
+  displayName: string;
+  avatarUrl: string | null;
 }
 
 export async function getArchiveCalendar(year: number, month: number) {

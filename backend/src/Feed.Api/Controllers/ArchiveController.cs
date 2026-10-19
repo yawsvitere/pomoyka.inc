@@ -12,15 +12,18 @@ namespace Feed.Api.Controllers;
 [Route("api/archive")]
 public class ArchiveController : ControllerBase
 {
+    private readonly Feed.Api.Data.AppDbContext _db;
     private readonly PomoykaService _pomoykaService;
     private readonly IStorageService _storage;
     private readonly ILogger<ArchiveController> _logger;
 
     public ArchiveController(
+        Feed.Api.Data.AppDbContext db,
         PomoykaService pomoykaService,
         IStorageService storage,
         ILogger<ArchiveController> logger)
     {
+        _db = db;
         _pomoykaService = pomoykaService;
         _storage = storage;
         _logger = logger;
@@ -38,6 +41,35 @@ public class ArchiveController : ControllerBase
             return BadRequest(new { message = "Month must be between 1 and 12" });
 
         var archiveDays = await _pomoykaService.GetArchiveDaysForMonthAsync(year, month);
+        var archiveDayIds = archiveDays.Select(day => day.Id).ToArray();
+        var participants = await _db.ArchivedPosts
+            .AsNoTracking()
+            .Where(post => archiveDayIds.Contains(post.ArchiveDayId))
+            .Select(post => new
+            {
+                post.ArchiveDayId,
+                Id = post.Author!.Id,
+                post.Author.DisplayName,
+                post.Author.AvatarUrl
+            })
+            .Distinct()
+            .ToListAsync();
+        var participantsByDay = participants
+            .GroupBy(participant => participant.ArchiveDayId)
+            .ToDictionary(
+                group => group.Key,
+                group => group
+                    .OrderBy(participant => participant.DisplayName)
+                    .Take(4)
+                    .Select(participant => new ArchiveDayParticipantDto
+                    {
+                        Id = participant.Id,
+                        DisplayName = participant.DisplayName,
+                        AvatarUrl = participant.AvatarUrl == null
+                            ? null
+                            : $"/api/files/avatar/{participant.Id}?v={Uri.EscapeDataString(participant.AvatarUrl)}"
+                    })
+                    .ToList());
 
         var calendar = new ArchiveCalendarDto
         {
@@ -49,7 +81,10 @@ public class ArchiveController : ControllerBase
                 PostCount = d.PostCount,
                 PostishkaCount = d.PostishkaCount,
                 ParticipantCount = d.ParticipantCount,
-                ClosedAt = d.ClosedAt
+                ClosedAt = d.ClosedAt,
+                Participants = participantsByDay.GetValueOrDefault(
+                    d.Id,
+                    new List<ArchiveDayParticipantDto>())
             }).ToList()
         };
 
@@ -80,7 +115,6 @@ public class ArchiveController : ControllerBase
 
 
             var (posts, total) = await _pomoykaService.GetArchivedPostsForDayAsync(date, (page - 1) * pageSize, pageSize);
-
             var detail = new ArchiveDayDetailDto
             {
                 Date = date,
@@ -114,10 +148,7 @@ public class ArchiveController : ControllerBase
     public async Task<ActionResult<ArchivedPostDto>> GetArchivedPost(Guid id)
     {
 
-        var app = HttpContext.RequestServices;
-        var db = app.GetRequiredService<Feed.Api.Data.AppDbContext>();
-
-        var post = await db.ArchivedPosts
+        var post = await _db.ArchivedPosts
             .AsNoTracking()
             .Where(p => p.Id == id)
             .Include(p => p.Author)
@@ -161,7 +192,9 @@ public class ArchiveController : ControllerBase
                 Id = post.Author!.Id,
                 Email = post.Author.Email ?? string.Empty,
                 DisplayName = post.Author.DisplayName,
-                AvatarUrl = post.Author.AvatarUrl == null ? null : $"/api/files/avatar/{post.Author.Id}?v={Uri.EscapeDataString(post.Author.AvatarUrl)}"
+                AvatarUrl = post.Author.AvatarUrl == null
+                    ? null
+                    : $"/api/files/avatar/{post.Author.Id}?v={Uri.EscapeDataString(post.Author.AvatarUrl)}"
             },
 
             Files = post.Files
@@ -197,7 +230,10 @@ public class ArchiveController : ControllerBase
         FileName = file.FileName,
         ContentType = file.ContentType,
         SizeBytes = file.SizeBytes,
-        DownloadUrl = $"{Request.Scheme}://{Request.Host}/api/files/archive/{file.Id}/download"
+        DownloadUrl = $"{Request.Scheme}://{Request.Host}/api/files/archive/{file.Id}/download",
+        PreviewUrl = file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)
+            ? _storage.GetPublicObjectUrl(_storage.GetPreviewObjectKey(file.StorageKey))
+            : string.Empty
     };
 
     private Guid? GetUserId()
@@ -228,6 +264,7 @@ public class ArchiveDayDto
     public int PostCount { get; set; }
     public int PostishkaCount { get; set; }
     public int ParticipantCount { get; set; }
+    public List<ArchiveDayParticipantDto> Participants { get; set; } = new();
     public DateTime ClosedAt { get; set; }
 }
 
@@ -240,6 +277,13 @@ public class ArchiveDayDetailDto
     public DateTime ClosedAt { get; set; }
     public List<ArchivedPostDto> Posts { get; set; } = new();
     public PaginationDto Pagination { get; set; } = new();
+}
+
+public class ArchiveDayParticipantDto
+{
+    public Guid Id { get; set; }
+    public string DisplayName { get; set; } = string.Empty;
+    public string? AvatarUrl { get; set; }
 }
 
 public class ArchivedPostDto : PostDto
