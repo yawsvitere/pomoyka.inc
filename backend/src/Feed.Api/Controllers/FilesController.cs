@@ -238,18 +238,57 @@ public class FilesController : ControllerBase
     public async Task<ActionResult<PinterestMediaPageDto>> GetPinterestMedia(
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 50,
-        [FromQuery] int seed = 0)
+        [FromQuery] int seed = 0,
+        [FromQuery] Guid? authorId = null,
+        [FromQuery] DateOnly? fromDate = null,
+        [FromQuery] DateOnly? toDate = null,
+        [FromQuery] string? mediaType = null)
     {
         page = Math.Max(page, 1);
         pageSize = Math.Clamp(pageSize, 1, 50);
+        var normalizedMediaType = mediaType?.Trim().ToLowerInvariant();
+        if (normalizedMediaType is not (null or "" or "image" or "video"))
+            return BadRequest(new { message = "Неизвестный тип контента" });
+        if (fromDate.HasValue && toDate.HasValue && fromDate > toDate)
+            return BadRequest(new { message = "Начальная дата не может быть позже конечной" });
+
         var visibleAccessLevels = new[] { FileAccessLevel.Public, FileAccessLevel.Authenticated };
-        var userFiles = await _db.UserFiles.AsNoTracking()
+        var userFilesQuery = _db.UserFiles.AsNoTracking()
             .Include(x => x.Owner)
             .Where(x => visibleAccessLevels.Contains(x.AccessLevel) &&
                 (x.ContentType.StartsWith("image/") || x.ContentType.StartsWith("video/")))
+            .AsQueryable();
+        if (fromDate.HasValue)
+        {
+            var from = fromDate.Value.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+            userFilesQuery = userFilesQuery.Where(x => x.UploadedAt >= from);
+        }
+        if (toDate.HasValue && toDate.Value < DateOnly.MaxValue)
+        {
+            var toExclusive = toDate.Value.AddDays(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+            userFilesQuery = userFilesQuery.Where(x => x.UploadedAt < toExclusive);
+        }
+        if (normalizedMediaType == "image")
+            userFilesQuery = userFilesQuery.Where(x => x.ContentType.StartsWith("image/"));
+        else if (normalizedMediaType == "video")
+            userFilesQuery = userFilesQuery.Where(x => x.ContentType.StartsWith("video/"));
+
+        var userFiles = await userFilesQuery
             .OrderByDescending(x => x.UploadedAt)
             .ToListAsync();
-        var media = userFiles.Select(x => new PinterestMediaDto(
+        var authors = userFiles
+            .Where(x => x.Owner != null)
+            .Select(x => new PinterestAuthorDto(
+                x.OwnerId,
+                x.Owner!.DisplayName,
+                x.Owner.NicknameColor,
+                ToFileAuthorDto(x.Owner)!.AvatarUrl))
+            .DistinctBy(x => x.Id)
+            .OrderBy(x => x.DisplayName)
+            .ToList();
+        var media = userFiles
+            .Where(x => !authorId.HasValue || x.OwnerId == authorId.Value)
+            .Select(x => new PinterestMediaDto(
             x.Id.ToString(),
             x.FileName,
             x.ContentType,
@@ -269,7 +308,9 @@ public class FilesController : ControllerBase
             .Where(x => x.StartsWith("sha256/", StringComparison.Ordinal))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        var keys = await _storage.ListObjectKeysAsync("sha256/");
+        var keys = authorId.HasValue
+            ? []
+            : await _storage.ListObjectKeysAsync("sha256/");
         foreach (var key in keys)
         {
             if (librarySha256Keys.Contains(key)) continue;
@@ -277,6 +318,19 @@ public class FilesController : ControllerBase
             var contentType = metadata.Headers.ContentType ?? string.Empty;
             if (!contentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase) &&
                 !contentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase))
+                continue;
+            if (normalizedMediaType == "image" &&
+                !contentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+                continue;
+            if (normalizedMediaType == "video" &&
+                !contentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase))
+                continue;
+            if (authorId.HasValue) continue;
+            if (fromDate.HasValue &&
+                metadata.LastModified < fromDate.Value.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc))
+                continue;
+            if (toDate.HasValue && toDate.Value < DateOnly.MaxValue &&
+                metadata.LastModified >= toDate.Value.AddDays(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc))
                 continue;
 
             if (contentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase))
@@ -308,7 +362,8 @@ public class FilesController : ControllerBase
             : orderedMedia.Skip((int)offset).Take(pageSize).ToList();
         return Ok(new PinterestMediaPageDto(
             items,
-            (long)orderedMedia.Count > (long)page * pageSize));
+            (long)orderedMedia.Count > (long)page * pageSize,
+            authors));
     }
 
     private static ulong GetPinterestShuffleKey(string id, int seed)

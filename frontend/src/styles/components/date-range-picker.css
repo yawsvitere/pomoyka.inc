@@ -1,0 +1,322 @@
+.drp {
+  position: relative;
+  display: inline-block;
+}
+
+.drp-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 140px;
+  height: 38px;
+  padding: 0 16px 0 13px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background-color: color-mix(in srgb, var(--color-text) 7%, transparent);
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  outline: none;
+  transition:
+    background-color 0.18s ease,
+    border-color 0.18s ease,
+    color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.drp-trigger.has-value {
+  color: var(--color-text);
+}
+
+.drp-trigger:hover,
+.drp.is-open .drp-trigger {
+  background-color: color-mix(in srgb, var(--color-text) 11%, transparent);
+}
+
+.drp-trigger:focus-visible {
+  border-color: color-mix(in srgb, var(--color-text) 28%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-text) 8%, transparent);
+}
+
+.drp-trigger__icon {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.7;
+}
+
+.pinterest-filter .drp-trigger {
+  margin-left: -14px;
+}
+
+.drp-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  z-index: 1000;
+  width: 292px;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--color-text) 10%, transparent);
+  border-radius: 22px;
+  background: var(--color-surface);
+  box-shadow:
+    0 18px 50px rgba(0, 0, 0, 0.35),
+    0 2px 8px rgba(0, 0, 0, 0.2);
+  animation: drp-in 0.16s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.drp-popover--end {
+  right: 0;
+  transform-origin: top right;
+}
+
+.drp-popover--start {
+  left: 0;
+  transform-origin: top left;
+}
+
+@keyframes drp-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.drp-presets {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.drp-presets button {
+  flex: 1;
+  height: 30px;
+  border: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-text) 7%, transparent);
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.drp-presets button:hover {
+  background: color-mix(in srgb, var(--color-text) 14%, transparent);
+  color: var(--color-text);
+}
+
+.drp-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.drp-title {
+  color: var(--color-text);
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.drp-nav {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.drp-nav:hover {
+  background: color-mix(in srgb, var(--color-text) 10%, transparent);
+  color: var(--color-text);
+}
+
+.drp-nav svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.drp-weekdays,
+.drp-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+}
+
+.drp-weekdays span {
+  padding: 6px 0;
+  color: var(--color-text-faint, var(--color-text-muted));
+  font-size: 11px;
+  font-weight: 500;
+  text-align: center;
+}
+
+.drp-cell {
+  position: relative;
+  display: grid;
+  height: 36px;
+  place-items: center;
+}
+
+.drp-cell.is-in-range::before,
+.drp-cell.is-range-start::before,
+.drp-cell.is-range-end::before {
+  content: "";
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 0;
+  right: 0;
+  background: color-mix(in srgb, var(--color-text) 12%, transparent);
+}
+
+.drp-cell.is-range-start::before {
+  left: 50%;
+}
+
+.drp-cell.is-range-end::before {
+  right: 50%;
+}
+
+.drp-day {
+  position: relative;
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  outline: none;
+  transition:
+    background-color 0.12s ease,
+    color 0.12s ease;
+}
+
+.drp-day:hover:not(:disabled):not(.is-selected) {
+  background: color-mix(in srgb, var(--color-text) 14%, transparent);
+}
+
+.drp-day:focus-visible {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-text) 45%, transparent);
+}
+
+.drp-day.is-today:not(.is-selected) {
+  box-shadow: inset 0 0 0 1px
+    color-mix(in srgb, var(--color-text) 35%, transparent);
+}
+
+.drp-day.is-selected {
+  background: var(--color-text);
+  color: var(--color-surface);
+  font-weight: 600;
+}
+
+.drp-day:disabled {
+  opacity: 0.25;
+  cursor: default;
+}
+
+.drp-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 28px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid color-mix(in srgb, var(--color-text) 8%, transparent);
+}
+
+.drp-hint {
+  color: var(--color-text-faint, var(--color-text-muted));
+  font-size: 12px;
+}
+
+.drp-clear {
+  padding: 4px 10px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.drp-clear:hover {
+  background: color-mix(in srgb, var(--color-text) 10%, transparent);
+  color: var(--color-text);
+}
+
+@media (max-width: 700px) {
+  .drp {
+    display: block;
+  }
+
+  .drp-trigger {
+    width: 100%;
+  }
+
+  .drp-popover--end {
+    right: auto;
+    left: 0;
+  }
+}
+
+@media (max-width: 340px) {
+  .drp-popover {
+    width: min(292px, calc(100vw - 32px));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .drp-popover {
+    animation: none;
+  }
+
+  .drp-trigger,
+  .drp-day,
+  .drp-nav,
+  .drp-presets button,
+  .drp-clear {
+    transition: none;
+  }
+}

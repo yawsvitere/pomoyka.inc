@@ -160,6 +160,7 @@ function PinterestCard({
   const [videoSource, setVideoSource] = useState(previewUrl ?? mediaUrl);
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const videoInViewportRef = useRef(false);
   const [aspectRatio, setAspectRatio] = useState(
     image.width && image.height
       ? image.width / image.height
@@ -206,14 +207,26 @@ function PinterestCard({
     const video = videoRef.current;
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (entry.isIntersecting) void video.play().catch(() => undefined);
-        else video.pause();
+        videoInViewportRef.current = entry.isIntersecting;
+        if (entry.isIntersecting) {
+          void video.play().catch(() => undefined);
+        } else {
+          video.pause();
+        }
       },
       { threshold: 0.1 },
     );
     observer.observe(video);
-    return () => observer.disconnect();
+    return () => {
+      videoInViewportRef.current = false;
+      observer.disconnect();
+    };
   }, [isVideo]);
+
+  const handleVideoCanPlay = (event: SyntheticEvent<HTMLVideoElement>) => {
+    if (videoInViewportRef.current)
+      void event.currentTarget.play().catch(() => undefined);
+  };
 
   const handleImageLoad = (event: SyntheticEvent<HTMLImageElement>) => {
     const imageElement = event.currentTarget;
@@ -317,12 +330,14 @@ function PinterestCard({
               ref={videoRef}
               src={videoSrc}
               aria-label={image.fileName}
+              autoPlay
               muted
               loop
               playsInline
               preload="metadata"
               onClick={() => onOpenVideo({ name: image.fileName, url: mediaUrl })}
               onLoadedMetadata={handleVideoMeta}
+              onCanPlay={handleVideoCanPlay}
               onError={handleVideoError}
             />
           ) : (

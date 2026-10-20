@@ -110,6 +110,11 @@ Base URL: `http://localhost:5000`
 | POST | `/avatar` | Загрузить аватар |
 | POST | `/banner` | Загрузить баннер |
 | GET | `/avatar/{userId}` | Отдать аватар |
+
+`GET /pinterest` принимает `page`, `pageSize` (максимум 50), `seed`, `authorId`,
+`fromDate` и `toDate` в формате `YYYY-MM-DD`, а также `mediaType` (`image` или
+`video`). Фильтры применяются до пагинации; даты включают указанные дни.
+Ответ содержит `items`, `hasMore` и список `authors` для фильтра автора.
 | GET | `/banner/{userId}` | Отдать баннер профиля |
 
 ## Администрирование
