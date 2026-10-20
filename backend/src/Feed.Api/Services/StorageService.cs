@@ -26,6 +26,7 @@ public interface IStorageService
     string GetFeedPreviewObjectKey(string objectKey);
     IEnumerable<string> GetImagePreviewObjectKeys(string objectKey);
     string GetVideoPreviewObjectKey(string objectKey);
+    IEnumerable<string> GetVideoPreviewObjectKeys(string objectKey);
     Task<GetObjectResponse> GetObjectAsync(
         string objectKey,
         CancellationToken cancellationToken = default);
@@ -169,6 +170,9 @@ public class StorageService : IStorageService
 
     public string GetVideoPreviewObjectKey(string objectKey) => $"previews/{objectKey}.mp4";
 
+    public IEnumerable<string> GetVideoPreviewObjectKeys(string objectKey) =>
+        new[] { GetIconPreviewObjectKey(objectKey), GetVideoPreviewObjectKey(objectKey) };
+
     public async Task<ImagePreviewResult?> CreateImagePreviewAsync(string sourceKey, string contentType)
     {
         if (!contentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
@@ -234,70 +238,104 @@ public class StorageService : IStorageService
             return null;
 
         var previewKey = GetVideoPreviewObjectKey(sourceKey);
+        var iconPreviewKey = GetIconPreviewObjectKey(sourceKey);
+        var hasVideoPreview = false;
+        var hasIconPreview = false;
         try
         {
             await _s3.GetObjectMetadataAsync(_bucket, previewKey);
-            return previewKey;
+            hasVideoPreview = true;
         }
         catch (AmazonS3Exception exception) when (exception.StatusCode == System.Net.HttpStatusCode.NotFound)
         {
         }
+
+        try
+        {
+            await _s3.GetObjectMetadataAsync(_bucket, iconPreviewKey);
+            hasIconPreview = true;
+        }
+        catch (AmazonS3Exception exception) when (exception.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+        }
+
+        if (hasVideoPreview && hasIconPreview)
+            return previewKey;
 
         var tempDirectory = Directory.CreateTempSubdirectory("feed-video-preview-");
         try
         {
             var inputPath = Path.Combine(tempDirectory.FullName, "source");
             var outputPath = Path.Combine(tempDirectory.FullName, "preview.mp4");
+            var iconOutputPath = Path.Combine(tempDirectory.FullName, "preview.webp");
             using (var source = await _s3.GetObjectAsync(_bucket, sourceKey))
             await using (var input = File.Create(inputPath))
             {
                 await source.ResponseStream.CopyToAsync(input);
             }
 
-            var process = new Process
+            if (!hasVideoPreview)
             {
-                StartInfo = new ProcessStartInfo
-                {
-                    FileName = "ffmpeg",
-                    RedirectStandardError = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                }
-            };
-            foreach (var argument in new[]
-            {
-                "-y", "-i", inputPath, "-t", "8", "-vf", "scale=440:-2", "-an",
-                "-c:v", "libx264", "-preset", "veryfast", "-crf", "28",
-                "-profile:v", "main", "-pix_fmt", "yuv420p", "-movflags", "+faststart", outputPath
-            })
-                process.StartInfo.ArgumentList.Add(argument);
-
-            process.Start();
-            var errorTask = process.StandardError.ReadToEndAsync();
-            using var timeout = new CancellationTokenSource(_videoPreviewTimeout);
-            try
-            {
-                await process.WaitForExitAsync(timeout.Token);
+                await RunFfmpegAsync(outputPath,
+                    "-y", "-i", inputPath, "-t", "8", "-map", "0:v:0",
+                    "-vf", "scale=440:-2", "-an", "-c:v", "libx264", "-preset", "veryfast",
+                    "-crf", "28", "-profile:v", "main", "-pix_fmt", "yuv420p",
+                    "-movflags", "+faststart", outputPath);
+                await using var preview = File.OpenRead(outputPath);
+                await UploadObjectAsync(previewKey, preview, "video/mp4");
             }
-            catch (OperationCanceledException)
-            {
-                if (!process.HasExited)
-                    process.Kill(entireProcessTree: true);
-                await process.WaitForExitAsync();
-                throw new TimeoutException($"ffmpeg exceeded the {_videoPreviewTimeout.TotalSeconds}-second preview limit.");
-            }
-            var error = await errorTask;
-            if (process.ExitCode != 0 || !File.Exists(outputPath))
-                throw new InvalidOperationException($"ffmpeg не смог создать превью видео: {error}");
 
-            await using var preview = File.OpenRead(outputPath);
-            await UploadObjectAsync(previewKey, preview, "video/mp4");
+            if (!hasIconPreview)
+            {
+                await RunFfmpegAsync(iconOutputPath,
+                    "-y", "-i", inputPath, "-map", "0:v:0", "-frames:v", "1",
+                    "-vf", "scale=30:30:force_original_aspect_ratio=increase,crop=30:30",
+                    "-c:v", "libwebp", "-quality", "82", "-f", "webp", iconOutputPath);
+                await using var iconPreview = File.OpenRead(iconOutputPath);
+                await UploadObjectAsync(iconPreviewKey, iconPreview, "image/webp");
+            }
+
             return previewKey;
         }
         finally
         {
             tempDirectory.Delete(true);
         }
+    }
+
+    private async Task RunFfmpegAsync(string outputPath, params string[] arguments)
+    {
+        var process = new Process
+        {
+            StartInfo = new ProcessStartInfo
+            {
+                FileName = "ffmpeg",
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            }
+        };
+        foreach (var argument in arguments)
+            process.StartInfo.ArgumentList.Add(argument);
+
+        process.Start();
+        var errorTask = process.StandardError.ReadToEndAsync();
+        using var timeout = new CancellationTokenSource(_videoPreviewTimeout);
+        try
+        {
+            await process.WaitForExitAsync(timeout.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            if (!process.HasExited)
+                process.Kill(entireProcessTree: true);
+            await process.WaitForExitAsync();
+            throw new TimeoutException($"ffmpeg exceeded the {_videoPreviewTimeout.TotalSeconds}-second preview limit.");
+        }
+
+        var error = await errorTask;
+        if (process.ExitCode != 0 || !File.Exists(outputPath))
+            throw new InvalidOperationException($"ffmpeg не смог создать превью видео: {error}");
     }
 
     private static async Task CopyToWithLimitAsync(Stream source, Stream destination, long maxBytes)

@@ -1345,7 +1345,7 @@ public class FilesController : ControllerBase
             if (file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
                 await _storage.DeleteObjectsAsync(_storage.GetImagePreviewObjectKeys(file.StorageKey));
             else if (file.ContentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase))
-                await _storage.DeleteObjectAsync(_storage.GetVideoPreviewObjectKey(file.StorageKey));
+                await _storage.DeleteObjectsAsync(_storage.GetVideoPreviewObjectKeys(file.StorageKey));
         }
         _db.UserFiles.Remove(file);
         await _db.SaveChangesAsync();
@@ -1370,7 +1370,7 @@ public class FilesController : ControllerBase
             if (file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
                 await _storage.DeleteObjectsAsync(_storage.GetImagePreviewObjectKeys(file.StorageKey));
             else if (file.ContentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase))
-                await _storage.DeleteObjectAsync(_storage.GetVideoPreviewObjectKey(file.StorageKey));
+                await _storage.DeleteObjectsAsync(_storage.GetVideoPreviewObjectKeys(file.StorageKey));
         }
         _db.PostFiles.Remove(file);
         await _db.SaveChangesAsync();
@@ -2081,7 +2081,8 @@ public class FilesController : ControllerBase
                 foreach (var previewKey in _storage.GetImagePreviewObjectKeys(file.StorageKey))
                     yield return previewKey;
             else if (file.ContentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase))
-                yield return _storage.GetVideoPreviewObjectKey(file.StorageKey);
+                foreach (var previewKey in _storage.GetVideoPreviewObjectKeys(file.StorageKey))
+                    yield return previewKey;
         }
     }
 
@@ -2123,7 +2124,8 @@ public class FilesController : ControllerBase
             (file.ContentType ?? string.Empty).StartsWith("image/", StringComparison.OrdinalIgnoreCase)
                 ? GetPreviewUrl(file.StorageKey, isVideo: false)
                 : null,
-            (file.ContentType ?? string.Empty).StartsWith("image/", StringComparison.OrdinalIgnoreCase)
+            ((file.ContentType ?? string.Empty).StartsWith("image/", StringComparison.OrdinalIgnoreCase) ||
+             (file.ContentType ?? string.Empty).StartsWith("video/", StringComparison.OrdinalIgnoreCase))
                 ? _storage.GetPublicObjectUrl(_storage.GetIconPreviewObjectKey(file.StorageKey))
                 : null);
 }

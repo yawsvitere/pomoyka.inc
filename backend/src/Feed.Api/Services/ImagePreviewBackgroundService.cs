@@ -149,11 +149,10 @@ public sealed class ImagePreviewBackgroundService : BackgroundService
                     await EnqueueReconciledAsync(file.StorageKey, file.ContentType, cancellationToken);
             }
 
-            var existingVideoPreviews = (await storage.ListObjectKeysAsync("previews/"))
-                .ToHashSet(StringComparer.Ordinal);
             foreach (var file in videoFiles.DistinctBy(file => file.StorageKey))
             {
-                if (!existingVideoPreviews.Contains(storage.GetVideoPreviewObjectKey(file.StorageKey)))
+                if (storage.GetVideoPreviewObjectKeys(file.StorageKey)
+                    .Any(previewKey => !existingPreviews.Contains(previewKey)))
                     await EnqueueReconciledAsync(file.StorageKey, file.ContentType, cancellationToken);
             }
         }

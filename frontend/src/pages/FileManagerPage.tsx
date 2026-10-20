@@ -1790,9 +1790,18 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
                               className=" fm-file-name fm-image-file-name"
                               onClick={() => void openMedia(file)}
                             >
-                              <span className="fm-file-avatar">
-                                {isVideo(file) ? "VID" : "AUD"}
-                              </span>
+                              {isVideo(file) && file.iconPreviewUrl ? (
+                                <img
+                                  className="fm-image-preview"
+                                  src={file.iconPreviewUrl}
+                                  alt=""
+                                  loading="lazy"
+                                />
+                              ) : (
+                                <span className="fm-file-avatar">
+                                  {isVideo(file) ? "VID" : "AUD"}
+                                </span>
+                              )}
                               <span className="fm-file-meta">
                                 {renameTarget?.type === "file" &&
                                 renameTarget.item.id === file.id ? (
