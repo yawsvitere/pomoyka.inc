@@ -3,7 +3,17 @@ import type { RefObject, SyntheticEvent } from "react";
 import { PhotoProvider, PhotoView } from "react-photo-view";
 import { Spinner } from "./Spinner";
 import { MediaModal } from "./MediaModal";
+import { AlertDialog } from "./AlertDialog";
+import { ContextMenu } from "../feed/ContextMenu";
+import type { ContextMenuAction } from "../feed/ContextMenu";
+import { useAuth } from "../../context/AuthContext";
+import { useToast } from "./useToast";
 import { getBrowserFileUrl } from "../../utils/fileUrl";
+import { isCurrentUserAdmin } from "../../utils/permissions";
+import copyIcon from "../../assets/icons/copy.svg";
+import deleteIcon from "../../assets/icons/delete.svg";
+import downloadIcon from "../../assets/icons/download.svg";
+import shareIcon from "../../assets/icons/share.svg";
 import "react-photo-view/dist/react-photo-view.css";
 import "../../styles/components/pinterest.css";
 
@@ -15,6 +25,12 @@ export type PinterestImage = {
   width: number | null;
   height: number | null;
   previewUrl: string | null;
+  ownerId?: string | null;
+  author?: {
+    displayName: string;
+    nicknameColor: string | null;
+    avatarUrl: string | null;
+  } | null;
 };
 
 const LOAD_MARGIN_PX = { image: 400, video: 150 } as const;
@@ -125,10 +141,17 @@ function useMediaVisibility<T extends HTMLElement>(
 function PinterestCard({
   image,
   onOpenVideo,
+  onDelete,
+  currentUserId,
+  isAdmin,
 }: {
   image: PinterestImage;
   onOpenVideo: (video: { name: string; url: string }) => void;
+  onDelete?: (imageId: string) => Promise<void> | void;
+  currentUserId?: string;
+  isAdmin: boolean;
 }) {
+  const { notify } = useToast();
   const isVideo = image.contentType.startsWith("video/");
   const mediaUrl = getBrowserFileUrl(image.url);
   const previewUrl = image.previewUrl
@@ -144,6 +167,14 @@ function PinterestCard({
   );
   const [isReady, setIsReady] = useState(false);
   const [hasError, setHasError] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const canDelete = Boolean(
+    onDelete &&
+      (isAdmin ||
+        (currentUserId &&
+          image.ownerId &&
+          currentUserId.toLowerCase() === image.ownerId.toLowerCase())),
+  );
 
   const isVisible = useMediaVisibility(
     containerRef,
@@ -206,59 +237,176 @@ function PinterestCard({
     setHasError(true);
   };
   const imgSrc = !isVideo && isVisible ? previewUrl ?? undefined : undefined;
+  const shareUrl = new URL(image.url, window.location.origin).href;
+  const handleCopyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      notify("success", "Ссылка скопирована");
+    } catch {
+      notify("error", "Не удалось скопировать ссылку");
+    }
+  };
+  const handleShare = async () => {
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: image.fileName, url: shareUrl });
+      } catch (error) {
+        if (error instanceof Error && error.name !== "AbortError")
+          notify("error", "Не удалось поделиться изображением");
+      }
+      return;
+    }
+    await handleCopyLink();
+  };
+  const handleDownload = () => {
+    const link = document.createElement("a");
+    link.href = getBrowserFileUrl(image.url);
+    link.download = image.fileName;
+    link.target = "_blank";
+    link.rel = "noreferrer";
+    link.click();
+  };
+  const menuActions: ContextMenuAction[] = [
+    { key: "share", label: "Поделиться", icon: shareIcon, onClick: handleShare },
+    {
+      key: "copy-link",
+      label: "Копировать ссылку",
+      icon: copyIcon,
+      onClick: handleCopyLink,
+    },
+    {
+      key: "download",
+      label: "Скачать",
+      icon: downloadIcon,
+      onClick: handleDownload,
+    },
+    ...(canDelete
+      ? [{
+          key: "delete",
+          label: "Удалить",
+          icon: deleteIcon,
+          danger: true,
+          onClick: () => setIsDeleteDialogOpen(true),
+        }]
+      : []),
+  ];
 
   return (
-    <div
-      ref={containerRef}
-      className={`pinterest-card${isReady ? " is-ready" : " is-loading"}`}
-      style={{ aspectRatio: String(aspectRatio) }}
-    >
-      {!isReady && !hasError && (
-        <Spinner
-          className="spinner--media"
-          label={isVideo ? "Загрузка видео" : "Загрузка изображения"}
-        />
-      )}
-      {hasError && (
-        <div className="pinterest-media-error">Не удалось загрузить</div>
-      )}
-      {isVideo ? (
-        <video
-          ref={videoRef}
-          src={videoSrc}
-          aria-label={image.fileName}
-          muted
-          loop
-          playsInline
-          preload="metadata"
-          onClick={() => onOpenVideo({ name: image.fileName, url: mediaUrl })}
-          onLoadedMetadata={handleVideoMeta}
-          onError={handleVideoError}
-        />
-      ) : (
-        <PhotoView src={mediaUrl}>
-          <button
-            type="button"
-            className="pinterest-card-media-button"
-            aria-label={`Открыть ${image.fileName}`}
-          >
-            <img
-              src={imgSrc}
-              alt={image.fileName}
-              loading="lazy"
-              decoding="async"
-              onLoad={handleImageLoad}
-              onError={() => setHasError(true)}
+    <>
+      <ContextMenu
+        customActions={menuActions}
+        popoverClassName="pinterest-card-menu"
+        triggerPlacement="left"
+      >
+        <div
+          ref={containerRef}
+          className={`pinterest-card${isReady ? " is-ready" : " is-loading"}`}
+          style={{ aspectRatio: String(aspectRatio) }}
+        >
+          {!isReady && !hasError && (
+            <Spinner
+              className="spinner--media"
+              label={isVideo ? "Загрузка видео" : "Загрузка изображения"}
             />
-          </button>
-        </PhotoView>
-      )}
-    </div>
+          )}
+          {hasError && (
+            <div className="pinterest-media-error">Не удалось загрузить</div>
+          )}
+          {isVideo ? (
+            <video
+              ref={videoRef}
+              src={videoSrc}
+              aria-label={image.fileName}
+              muted
+              loop
+              playsInline
+              preload="metadata"
+              onClick={() => onOpenVideo({ name: image.fileName, url: mediaUrl })}
+              onLoadedMetadata={handleVideoMeta}
+              onError={handleVideoError}
+            />
+          ) : (
+            <PhotoView src={mediaUrl}>
+              <button
+                type="button"
+                className="pinterest-card-media-button"
+                aria-label={`Открыть ${image.fileName}`}
+              >
+                <img
+                  src={imgSrc}
+                  alt={image.fileName}
+                  loading="lazy"
+                  decoding="async"
+                  onLoad={handleImageLoad}
+                  onError={() => setHasError(true)}
+                />
+              </button>
+            </PhotoView>
+          )}
+          {isReady && (
+            <div className="pinterest-card-overlay">
+              {image.author && (
+                <div className="pinterest-card-author">
+                  {image.author.avatarUrl ? (
+                    <img
+                      className="pinterest-card-author__avatar"
+                      src={getBrowserFileUrl(image.author.avatarUrl)}
+                      alt=""
+                    />
+                  ) : (
+                    <span className="pinterest-card-author__avatar pinterest-card-author__avatar--fallback">
+                      {image.author.displayName.slice(0, 1).toUpperCase()}
+                    </span>
+                  )}
+                  <span
+                    className="pinterest-card-author__name"
+                    style={{ color: image.author.nicknameColor ?? "#f5f5f5" }}
+                  >
+                    {image.author.displayName}
+                  </span>
+                </div>
+              )}
+              <button
+                type="button"
+                className="pinterest-card-menu-trigger"
+                data-context-menu-trigger="true"
+                aria-label="Открыть меню изображения"
+                title="Действия"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <circle cx="5" cy="12" r="1.8" />
+                  <circle cx="12" cy="12" r="1.8" />
+                  <circle cx="19" cy="12" r="1.8" />
+                </svg>
+              </button>
+            </div>
+          )}
+        </div>
+      </ContextMenu>
+      <AlertDialog
+        open={isDeleteDialogOpen}
+        title="Удалить изображение?"
+        description="Это действие нельзя отменить."
+        onCancel={() => setIsDeleteDialogOpen(false)}
+        onConfirm={() => {
+          setIsDeleteDialogOpen(false);
+          void onDelete?.(image.id);
+        }}
+      />
+    </>
   );
 }
 
-export function Pinterest({ images }: { images: PinterestImage[] }) {
+export function Pinterest({
+  images,
+  onDelete,
+}: {
+  images: PinterestImage[];
+  onDelete?: (imageId: string) => Promise<void> | void;
+}) {
+  const { user } = useAuth();
   const { containerRef, columns } = usePinterestColumns(images);
+  const isAdmin = isCurrentUserAdmin();
   const [activeVideo, setActiveVideo] = useState<{
     name: string;
     url: string;
@@ -274,6 +422,9 @@ export function Pinterest({ images }: { images: PinterestImage[] }) {
                   key={image.id}
                   image={image}
                   onOpenVideo={setActiveVideo}
+                  onDelete={onDelete}
+                  currentUserId={user?.id}
+                  isAdmin={isAdmin}
                 />
               ))}
             </div>

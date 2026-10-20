@@ -68,6 +68,16 @@ export function PinterestPage() {
     }
   }, [hasMore, loadMoreFailed, notify, shuffleSeed]);
 
+  const deleteMedia = useCallback(async (id: string) => {
+    try {
+      await filesApi.deleteFile(id);
+      setMedia((current) => current.filter((item) => item.id !== id));
+      notify("success", "Изображение удалено");
+    } catch {
+      notify("error", "Не удалось удалить изображение");
+    }
+  }, [notify]);
+
   if (isLoading) {
     return <div className="pinterest-page-state"><Spinner label="Загрузка Pinterest" /></div>;
   }
@@ -80,6 +90,8 @@ export function PinterestPage() {
     width: item.width,
     height: item.height,
     previewUrl: item.previewUrl,
+    ownerId: item.ownerId,
+    author: item.author,
   }));
 
   return (
@@ -93,7 +105,7 @@ export function PinterestPage() {
           onLoadMore={loadMore}
           loadingLabel="Загрузка изображений"
         >
-          <Pinterest images={images} />
+          <Pinterest images={images} onDelete={deleteMedia} />
         </InfiniteScroll>
       ) : loadFailed ? null : (
         <p className="pinterest-page-empty">Пока нет доступных изображений и видео</p>

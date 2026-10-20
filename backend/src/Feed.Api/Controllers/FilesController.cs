@@ -244,6 +244,7 @@ public class FilesController : ControllerBase
         pageSize = Math.Clamp(pageSize, 1, 50);
         var visibleAccessLevels = new[] { FileAccessLevel.Public, FileAccessLevel.Authenticated };
         var userFiles = await _db.UserFiles.AsNoTracking()
+            .Include(x => x.Owner)
             .Where(x => visibleAccessLevels.Contains(x.AccessLevel) &&
                 (x.ContentType.StartsWith("image/") || x.ContentType.StartsWith("video/")))
             .OrderByDescending(x => x.UploadedAt)
@@ -260,7 +261,9 @@ public class FilesController : ControllerBase
                 ? _storage.GetPublicObjectUrl(_storage.GetPreviewObjectKey(x.StorageKey))
                 : x.ContentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase)
                     ? _storage.GetPublicObjectUrl(_storage.GetVideoPreviewObjectKey(x.StorageKey))
-                    : null)).ToList();
+                    : null,
+            x.OwnerId,
+            ToFileAuthorDto(x.Owner))).ToList();
         var librarySha256Keys = userFiles
             .Select(x => x.StorageKey)
             .Where(x => x.StartsWith("sha256/", StringComparison.Ordinal))
@@ -651,12 +654,15 @@ public class FilesController : ControllerBase
     [HttpGet("gallery/{folderId:guid}")]
     public async Task<ActionResult<object>> GetGallery(Guid folderId)
     {
-        var folder = await _db.FileFolders.AsNoTracking().Include(x => x.Files).FirstOrDefaultAsync(x => x.Id == folderId);
+        var folder = await _db.FileFolders.AsNoTracking()
+            .Include(x => x.Files)
+                .ThenInclude(x => x.Owner)
+            .FirstOrDefaultAsync(x => x.Id == folderId);
         if (folder == null || !CanAccess(folder.AccessLevel, folder.OwnerId)) return NotFound();
         var images = folder.Files
             .Where(x => (x.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase) || x.ContentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase)) && CanAccess(x.AccessLevel, x.OwnerId))
             .OrderBy(x => x.UploadedAt)
-            .Select(x => new { x.Id, x.FileName, Url = _storage.GetPublicObjectUrl(x.StorageKey), PreviewUrl = x.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase) ? _storage.GetPublicObjectUrl(_storage.GetPreviewObjectKey(x.StorageKey)) : x.ContentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase) ? _storage.GetPublicObjectUrl(_storage.GetVideoPreviewObjectKey(x.StorageKey)) : null, x.ContentType, x.Width, x.Height })
+            .Select(x => new { x.Id, x.FileName, Url = _storage.GetPublicObjectUrl(x.StorageKey), PreviewUrl = x.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase) ? _storage.GetPublicObjectUrl(_storage.GetPreviewObjectKey(x.StorageKey)) : x.ContentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase) ? _storage.GetPublicObjectUrl(_storage.GetVideoPreviewObjectKey(x.StorageKey)) : null, x.ContentType, x.Width, x.Height, OwnerId = (Guid?)x.OwnerId, Author = ToFileAuthorDto(x.Owner) })
             .ToList();
         return Ok(new { folder.Name, folder.AccessLevel, images });
     }
@@ -1341,8 +1347,9 @@ public class FilesController : ControllerBase
     public async Task<IActionResult> DeleteLibraryFile(Guid id)
     {
         var userId = GetUserId();
-        var file = await _db.UserFiles.FirstOrDefaultAsync(x => x.Id == id && x.OwnerId == userId);
-        if (file == null) return NotFound();
+        var file = await _db.UserFiles.FirstOrDefaultAsync(x => x.Id == id);
+        if (file == null || (file.OwnerId != userId && !User.IsInRole("Admin")))
+            return NotFound();
         var folderId = file.FolderId;
         if (!IsContentAddressedKey(file.StorageKey))
         {

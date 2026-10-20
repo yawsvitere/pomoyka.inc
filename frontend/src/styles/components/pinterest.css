@@ -86,6 +86,153 @@
   opacity: 1;
 }
 
+.pinterest-card-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px;
+  opacity: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(
+      0deg,
+      rgba(0, 0, 0, 0.62) 0%,
+      rgba(0, 0, 0, 0.28) 24%,
+      rgba(0, 0, 0, 0) 52%
+    ),
+    linear-gradient(
+      180deg,
+      rgba(0, 0, 0, 0.38) 0%,
+      rgba(0, 0, 0, 0.12) 14%,
+      rgba(0, 0, 0, 0) 30%
+    );
+  transition: opacity 0.2s ease;
+}
+
+.pinterest-card.is-ready:hover .pinterest-card-overlay,
+.pinterest-card.is-ready:has(.pinterest-card-menu-trigger:focus-visible)
+  .pinterest-card-overlay {
+  opacity: 1;
+}
+
+/* Автор выезжает снизу, точки сверху */
+.pinterest-card-author {
+  transform: translateY(6px);
+  transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.pinterest-card-menu-trigger {
+  transform: translateY(-6px);
+  transition:
+    transform 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.15s ease;
+}
+
+.pinterest-card.is-ready:hover .pinterest-card-author,
+.pinterest-card.is-ready:hover .pinterest-card-menu-trigger,
+.pinterest-card.is-ready:has(.pinterest-card-menu-trigger:focus-visible)
+  .pinterest-card-author,
+.pinterest-card.is-ready:has(.pinterest-card-menu-trigger:focus-visible)
+  .pinterest-card-menu-trigger {
+  transform: translateY(0);
+}
+
+.pinterest-card-author {
+  display: flex;
+  min-width: 0;
+  max-width: calc(100% - 48px);
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  background: none;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.005em;
+  pointer-events: none;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.55);
+}
+
+.pinterest-card-author__avatar {
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+
+.pinterest-card-author__avatar--fallback {
+  display: grid;
+  place-items: center;
+  background: var(--color-border-subtle);
+  color: var(--color-text-light);
+  font-size: 12px;
+}
+
+.pinterest-card-author__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pinterest-card-menu-trigger {
+  align-self: flex-start;
+  display: grid;
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+  margin: -4px -4px 0 0;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: #fff;
+  cursor: pointer;
+  pointer-events: auto;
+  opacity: 0.9;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.pinterest-card-menu-trigger svg {
+  width: 22px;
+  height: 22px;
+  fill: currentColor;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.55))
+    drop-shadow(0 0 8px rgba(0, 0, 0, 0.35));
+  transition: transform 0.15s ease;
+}
+
+.pinterest-card-menu-trigger:hover,
+.pinterest-card-menu-trigger:focus-visible {
+  background: none;
+  opacity: 1;
+}
+
+.pinterest-card-menu-trigger:hover svg,
+.pinterest-card-menu-trigger:focus-visible svg {
+  transform: scale(1.18);
+}
+
+.pinterest-card-menu-trigger:active svg {
+  transform: scale(0.92);
+}
+
+.pinterest-card-menu-trigger:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 0;
+}
+
+.pinterest-card-menu .context-menu {
+  min-width: 190px;
+}
+
 .pinterest-media-error {
   position: absolute;
   inset: 0;
@@ -99,9 +246,46 @@
   z-index: 2;
 }
 
+@media (hover: none) {
+  .pinterest-card.is-ready .pinterest-card-overlay {
+    opacity: 1;
+    background: linear-gradient(
+      180deg,
+      rgba(0, 0, 0, 0.3) 0%,
+      rgba(0, 0, 0, 0) 22%
+    );
+  }
+
+  .pinterest-card-author {
+    display: none;
+  }
+
+  .pinterest-card-overlay {
+    justify-content: flex-end;
+  }
+
+  .pinterest-card-menu-trigger {
+    transform: none;
+  }
+}
+
 @media (max-width: 420px) {
   .pinterest-grid,
   .pinterest-column {
     gap: 4px;
+  }
+
+  .pinterest-card-overlay {
+    padding: 8px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pinterest-card-overlay,
+  .pinterest-card-author,
+  .pinterest-card-menu-trigger,
+  .pinterest-card-menu-trigger svg {
+    transition: none;
+    transform: none;
   }
 }

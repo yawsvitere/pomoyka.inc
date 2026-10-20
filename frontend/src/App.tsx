@@ -3,6 +3,7 @@ import { lazy, Suspense, useEffect } from "react";
 
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { ToastProvider } from "./components/ui/Toast";
+import { isCurrentUserAdmin } from "./utils/permissions";
 
 const ErrorPage = lazy(() =>
   import("./components/ui/ErrorPage").then(({ ErrorPage }) => ({
@@ -111,27 +112,8 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-function isAdmin() {
-  const token = localStorage.getItem("token");
-  if (!token) return false;
-
-  try {
-    const payload = JSON.parse(
-      atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")),
-    );
-    const roleClaim =
-      payload.role ??
-      payload["http://schemas.microsoft.com/ws/2008/06/identity/claims/role"];
-    return (Array.isArray(roleClaim) ? roleClaim : [roleClaim]).includes(
-      "Admin",
-    );
-  } catch {
-    return false;
-  }
-}
-
 function AdminRoute({ children }: { children: React.ReactNode }) {
-  return isAdmin() ? <>{children}</> : <ErrorPage status={500} />;
+  return isCurrentUserAdmin() ? <>{children}</> : <ErrorPage status={500} />;
 }
 
 function GuestRoute({ children }: { children: React.ReactNode }) {

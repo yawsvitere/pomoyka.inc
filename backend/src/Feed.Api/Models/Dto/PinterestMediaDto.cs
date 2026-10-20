@@ -8,4 +8,6 @@ public record PinterestMediaDto(
     int? Height,
     DateTime UploadedAt,
     string DownloadUrl,
-    string? PreviewUrl);
+    string? PreviewUrl,
+    Guid? OwnerId = null,
+    FileAuthorDto? Author = null);

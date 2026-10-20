@@ -1,19 +1,34 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import * as filesApi from "../api/files";
 import { Spinner } from "../components/ui/Spinner";
 import { ErrorPage } from "../components/ui/ErrorPage";
 import { Pinterest } from "../components/ui/Pinterest";
+import { useToast } from "../components/ui/useToast";
 import "../styles/pages/file-manager.css";
 import "../styles/pages/file-gallery.css";
 
 export function FileGalleryPage() {
   const { folderId } = useParams();
+  const { notify } = useToast();
   const [gallery, setGallery] = useState<Awaited<
     ReturnType<typeof filesApi.getGallery>
   > | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [errorStatus, setErrorStatus] = useState<404 | 500 | null>(null);
+  const deleteMedia = useCallback(async (id: string) => {
+    try {
+      await filesApi.deleteFile(id);
+      setGallery((current) =>
+        current
+          ? { ...current, images: current.images.filter((image) => image.id !== id) }
+          : current,
+      );
+      notify("success", "Изображение удалено");
+    } catch {
+      notify("error", "Не удалось удалить изображение");
+    }
+  }, [notify]);
 
   useEffect(() => {
     if (!folderId) {
@@ -112,7 +127,7 @@ export function FileGalleryPage() {
   return (
     <main className="fm-gallery">
       <h1>{gallery.name}</h1>
-      <Pinterest images={gallery.images} />
+      <Pinterest images={gallery.images} onDelete={deleteMedia} />
     </main>
   );
 }

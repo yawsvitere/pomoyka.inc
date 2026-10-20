@@ -62,6 +62,12 @@ export interface PinterestMedia {
   uploadedAt: string;
   downloadUrl: string;
   previewUrl: string | null;
+  ownerId: string | null;
+  author: {
+    displayName: string;
+    nicknameColor: string;
+    avatarUrl: string | null;
+  } | null;
 }
 export interface PinterestMediaPage {
   items: PinterestMedia[];
@@ -305,6 +311,12 @@ export async function getGallery(id: string) {
         contentType: string;
         width: number | null;
         height: number | null;
+        ownerId: string | null;
+        author: {
+          displayName: string;
+          nicknameColor: string;
+          avatarUrl: string | null;
+        } | null;
       }[];
     }>(`/api/files/gallery/${id}`)
   ).data;
