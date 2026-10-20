@@ -78,6 +78,15 @@ export function SettingsPage() {
     }
   }, [user]);
 
+  useEffect(() => {
+    if (!cropTarget) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !isUploading) closeCropper();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [cropTarget, isUploading, cropImage, cropVideo]);
+
   async function saveChanges(e: React.FormEvent) {
     e.preventDefault();
 
@@ -372,21 +381,41 @@ export function SettingsPage() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="crop-title"
+            onMouseDown={(e) => {
+              if (e.target === e.currentTarget && !isUploading) closeCropper();
+            }}
           >
             <div className="settings-crop-dialog">
               <div className="settings-crop-header">
-                <h2 id="crop-title">
-                  Обрезать {cropTarget === "avatar" ? "аватар" : "баннер"}
-                </h2>
+                <div className="settings-crop-heading">
+                  <h2 id="crop-title">
+                    {cropTarget === "avatar" ? "Аватар" : "Баннер"}
+                  </h2>
+                </div>
                 <button
-                  className="btn btn-secondary"
+                  className="settings-crop-close"
                   type="button"
                   onClick={closeCropper}
                   disabled={isUploading}
+                  aria-label="Закрыть"
                 >
-                  Отмена
+                  <svg
+                    viewBox="0 0 24 24"
+                    width="18"
+                    height="18"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M6 6l12 12M18 6L6 18"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      fill="none"
+                    />
+                  </svg>
                 </button>
               </div>
+
               <div
                 className={`settings-crop-area settings-crop-area--${cropTarget}`}
               >
@@ -397,7 +426,7 @@ export function SettingsPage() {
                   zoom={zoom}
                   aspect={cropTarget === "avatar" ? 1 : 3}
                   cropShape={cropTarget === "avatar" ? "round" : "rect"}
-                  showGrid
+                  showGrid={cropTarget !== "avatar"}
                   mediaProps={{
                     muted: true,
                     playsInline: true,
@@ -410,27 +439,65 @@ export function SettingsPage() {
                   }
                 />
               </div>
-              <div className="settings-crop-controls">
-                <label>
-                  Масштаб{" "}
-                  <input
-                    type="range"
-                    min="1"
-                    max="3"
-                    step="0.1"
-                    value={zoom}
-                    onChange={(e) => setZoom(Number(e.target.value))}
-                  />
-                </label>
+
+              <div className="settings-crop-zoom">
+                <button
+                  type="button"
+                  className="settings-crop-step"
+                  onClick={() =>
+                    setZoom((z) => Math.max(1, +(z - 0.1).toFixed(2)))
+                  }
+                  aria-label="Уменьшить"
+                >
+                  −
+                </button>
+                <input
+                  type="range"
+                  min="1"
+                  max="3"
+                  step="0.01"
+                  value={zoom}
+                  style={
+                    {
+                      "--fill": `${((zoom - 1) / 2) * 100}%`,
+                    } as React.CSSProperties
+                  }
+                  onChange={(e) => setZoom(Number(e.target.value))}
+                  aria-label="Масштаб"
+                />
+                <button
+                  type="button"
+                  className="settings-crop-step"
+                  onClick={() =>
+                    setZoom((z) => Math.min(3, +(z + 0.1).toFixed(2)))
+                  }
+                  aria-label="Увеличить"
+                >
+                  +
+                </button>
+                <span className="settings-crop-zoom-value">
+                  {Math.round(zoom * 100)}%
+                </span>
               </div>
-              <button
-                className="btn btn-primary"
-                type="button"
-                onClick={uploadCroppedImage}
-                disabled={isUploading || !croppedAreaPixels}
-              >
-                {isUploading ? "Загрузка..." : "Обрезать и загрузить"}
-              </button>
+
+              <div className="settings-crop-footer">
+                <button
+                  className="btn btn-secondary"
+                  type="button"
+                  onClick={closeCropper}
+                  disabled={isUploading}
+                >
+                  Отмена
+                </button>
+                <button
+                  className="btn btn-primary"
+                  type="button"
+                  onClick={uploadCroppedImage}
+                  disabled={isUploading || !croppedAreaPixels}
+                >
+                  {isUploading ? "Загрузка..." : "Сохранить"}
+                </button>
+              </div>
             </div>
           </div>,
           document.body,

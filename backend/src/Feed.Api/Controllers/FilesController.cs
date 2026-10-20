@@ -39,6 +39,7 @@ public class FilesController : ControllerBase
     private readonly IHubContext<FeedHub> _feedHub;
     private readonly ILogger<FilesController> _logger;
     private readonly OgImageStorageCache _ogImageCache;
+    private readonly AvatarImageOptimizer _avatarImageOptimizer;
     private readonly string _sevenZipExecutable;
 
     private const long MaxFileSizeBytes = 500L * 1024 * 1024;
@@ -56,7 +57,8 @@ public class FilesController : ControllerBase
         IHubContext<FeedHub> feedHub,
         ILogger<FilesController> logger,
         IConfiguration configuration,
-        OgImageStorageCache ogImageCache)
+        OgImageStorageCache ogImageCache,
+        AvatarImageOptimizer avatarImageOptimizer)
     {
         _db = db;
         _storage = storage;
@@ -65,6 +67,7 @@ public class FilesController : ControllerBase
         _feedHub = feedHub;
         _logger = logger;
         _ogImageCache = ogImageCache;
+        _avatarImageOptimizer = avatarImageOptimizer;
         _sevenZipExecutable = configuration["SevenZip:ExecutablePath"] ?? "7z";
     }
 
@@ -1283,7 +1286,14 @@ public class FilesController : ControllerBase
             return NotFound();
 
         var objectResponse = await _storage.GetObjectAsync(file.StorageKey);
-        return File(objectResponse.ResponseStream, objectResponse.Headers.ContentType ?? file.ContentType, file.FileName);
+        Response.Headers.CacheControl = "private, no-cache";
+        return File(
+            objectResponse.ResponseStream,
+            objectResponse.Headers.ContentType ?? file.ContentType,
+            file.FileName,
+            file.UploadedAt,
+            new EntityTagHeaderValue($"\"{file.Id:N}\""),
+            enableRangeProcessing: true);
     }
 
     [HttpGet("comment/{id:guid}/download")]
@@ -1302,10 +1312,14 @@ public class FilesController : ControllerBase
             return NotFound();
 
         var objectResponse = await _storage.GetObjectAsync(file.StorageKey);
+        Response.Headers.CacheControl = "private, no-cache";
         return File(
             objectResponse.ResponseStream,
             objectResponse.Headers.ContentType ?? file.ContentType,
-            file.FileName);
+            file.FileName,
+            file.UploadedAt,
+            new EntityTagHeaderValue($"\"{file.Id:N}\""),
+            enableRangeProcessing: true);
     }
 
     [HttpGet("archive/{id:guid}/download")]
@@ -1443,7 +1457,10 @@ public class FilesController : ControllerBase
         if (file.ContentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase))
             storageKey = await _storage.CreateAvatarVideoAsync(stream, cropX, cropY, cropWidth, cropHeight);
         else if (file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
-            storageKey = await _storage.UploadDeduplicatedObjectAsync(stream, file.ContentType);
+        {
+            await using var optimizedImage = await _avatarImageOptimizer.OptimizeAsync(stream);
+            storageKey = await _storage.UploadDeduplicatedObjectAsync(optimizedImage, "image/webp");
+        }
         else
             return BadRequest(new { message = "Можно загружать только изображения и видео" });
 
@@ -1527,6 +1544,7 @@ public class FilesController : ControllerBase
         try
         {
             var objectResponse = await _storage.GetObjectAsync(GetAvatarStorageKey(user.AvatarUrl));
+            Response.Headers.CacheControl = "public, max-age=31536000, immutable";
             return File(objectResponse.ResponseStream, objectResponse.Headers.ContentType ?? GetAvatarContentType(user.AvatarUrl));
         }
         catch (AmazonS3Exception exception) when (exception.StatusCode == System.Net.HttpStatusCode.NotFound)
@@ -1584,7 +1602,7 @@ public class FilesController : ControllerBase
             : avatarUrl;
 
     private static string GetAvatarContentType(string avatarUrl) =>
-        avatarUrl.StartsWith(AvatarVideoPrefix, StringComparison.Ordinal) ? "video/mp4" : "image/jpeg";
+        avatarUrl.StartsWith(AvatarVideoPrefix, StringComparison.Ordinal) ? "video/mp4" : "image/webp";
 
     private string GetPublicOrigin()
     {

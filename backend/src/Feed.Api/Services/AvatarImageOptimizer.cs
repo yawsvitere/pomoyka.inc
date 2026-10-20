@@ -1,11 +1,13 @@
 using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Formats.Webp;
 using SixLabors.ImageSharp.Processing;
 
 namespace Feed.Api.Services;
 
 public sealed class AvatarImageOptimizer
 {
-    private const int AvatarSize = 200;
+    private const int AvatarSize = 60;
+    private const int WebpQuality = 100;
 
     public async Task<Stream> OptimizeAsync(Stream input)
     {
@@ -17,7 +19,7 @@ public sealed class AvatarImageOptimizer
         }));
 
         var output = new MemoryStream();
-        await image.SaveAsWebpAsync(output);
+        await image.SaveAsWebpAsync(output, new WebpEncoder { Quality = WebpQuality });
         output.Position = 0;
         return output;
     }

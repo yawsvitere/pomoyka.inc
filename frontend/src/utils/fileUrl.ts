@@ -3,10 +3,15 @@ export function getBrowserFileUrl(url: string) {
 
   if (/^https?:\/\/[^/]+:9000\//i.test(normalizedUrl)) return normalizedUrl;
 
+  const browserUrl = new URL(normalizedUrl, window.location.origin);
+  if (/^\/api\/files\/avatar\/[0-9a-f-]+\/?$/i.test(browserUrl.pathname)) {
+    browserUrl.searchParams.delete("access_token");
+    return browserUrl.href;
+  }
+
   const token = localStorage.getItem("token");
   if (!token || !normalizedUrl.includes("/api/files/")) return normalizedUrl;
 
-  const browserUrl = new URL(normalizedUrl, window.location.origin);
   browserUrl.searchParams.set("access_token", token);
   return browserUrl.href;
 }

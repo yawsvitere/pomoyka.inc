@@ -18,6 +18,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Net.Http.Headers;
 
 namespace Feed.Api.Controllers;
 
@@ -226,7 +227,12 @@ public class PostsController : ControllerBase
             return NotFound();
 
         var cover = await _storage.GetObjectAsync(coverStorageKey);
-        return File(cover.ResponseStream, cover.Headers.ContentType ?? "application/octet-stream");
+        Response.Headers.CacheControl = "private, no-cache";
+        return File(
+            cover.ResponseStream,
+            cover.Headers.ContentType ?? "application/octet-stream",
+            lastModified: null,
+            entityTag: new EntityTagHeaderValue($"\"{coverStorageKey}\""));
     }
 
     [AllowAnonymous]
