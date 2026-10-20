@@ -73,12 +73,17 @@ function PostishkiCard({
   const coverUrl = getCoverUrl(post);
   const navigate = useNavigate();
   const { user } = useAuth();
+  const canEditPost = user?.id === post.author.id || isAdmin();
 
   return (
     <ContextMenu
       post={post}
-      canDelete={user?.id === post.author.id || isAdmin()}
-      onEdit={() => navigate(`/posts/${post.id}/edit`)}
+      canDelete={canEditPost}
+      onEdit={
+        canEditPost
+          ? () => navigate(`/posts/${post.id}/edit`)
+          : undefined
+      }
       onDelete={onDelete}
     >
       <article

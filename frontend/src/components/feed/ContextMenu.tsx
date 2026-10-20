@@ -606,17 +606,18 @@ export function ContextMenu({
                         </button>
                       )}
 
-                      <button
-                        type="button"
-                        className="context-menu__item"
-                        disabled={!onEdit}
-                        onClick={() => onEdit && run(onEdit)}
-                      >
-                        <MenuIcon src={pencilIcon} />
-                        <span className="context-menu__label">
-                          Редактировать
-                        </span>
-                      </button>
+                      {onEdit && (
+                        <button
+                          type="button"
+                          className="context-menu__item"
+                          onClick={() => run(onEdit)}
+                        >
+                          <MenuIcon src={pencilIcon} />
+                          <span className="context-menu__label">
+                            Редактировать
+                          </span>
+                        </button>
+                      )}
                     </div>
 
                     {post && post.files.length > 0 && (
