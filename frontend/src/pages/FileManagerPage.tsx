@@ -45,6 +45,12 @@ function fileInitials(name: string) {
   return base.slice(0, 2).toUpperCase();
 }
 
+function userInitials(name: string) {
+  const parts = name.split(/[\s_-]+/).filter(Boolean);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return name.slice(0, 2).toUpperCase();
+}
+
 type FileKind = "image" | "video" | "audio" | "other";
 
 function fileKind(file: filesApi.UserFile): FileKind {
@@ -1376,7 +1382,7 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
           </div>
 
           <section
-            className={`fm-list${isDragging ? " is-dragging" : ""}${selected.size > 0 ? " has-selection" : ""}`}
+            className={`fm-list${isDragging ? " is-dragging" : ""}${selected.size > 0 ? " has-selection" : ""}${shared ? " is-shared" : ""}`}
             onDragOver={(event) => {
               if (shared) return;
               if (!event.dataTransfer.types.includes("Files")) return;
@@ -1422,6 +1428,7 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
                 {sortHead("name", "Имя")}
                 {sortHead("size", "Размер")}
                 {sortHead("date", "Загружен")}
+                {shared && <span>Автор</span>}
                 <span>Доступ</span>
                 <span />
               </div>
@@ -1464,6 +1471,7 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
                           <strong>..</strong>
                         </span>
                       </button>
+                      {shared && <span className="fm-cell" />}
                       <span />
                       <span />
                       <span />
@@ -1571,6 +1579,7 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
                                 "ru-RU",
                               )}
                             </span>
+                            {shared && <span className="fm-cell" />}
                             <ContextMenu
                               triggerPlacement="left"
                               customActions={[
@@ -1751,7 +1760,7 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
                         ]}
                       >
                         <div
-                          className={`fm-file-row${selected.has(file.id) ? " is-selected" : ""}`}
+                          className={`fm-file-row${selected.has(file.id) ? " is-selected" : ""}${shared ? " fm-shared-file-row" : ""}`}
                           key={file.id}
                           draggable
                           onDragStart={(event) => {
@@ -1857,6 +1866,35 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
                               "ru-RU",
                             )}
                           </span>
+                          {shared && (
+                            <span className="fm-cell fm-author-cell">
+                              {file.author && (
+                                <>
+                                  <span className="fm-author-avatar">
+                                    {file.author.avatarUrl ? (
+                                      <img
+                                        src={getBrowserFileUrl(file.author.avatarUrl)}
+                                        alt=""
+                                        loading="lazy"
+                                      />
+                                    ) : (
+                                      userInitials(file.author.displayName)
+                                    )}
+                                  </span>
+                                  <span
+                                    className="fm-author-name"
+                                    style={{
+                                      color:
+                                        file.author.nicknameColor ??
+                                        "#4f46e5",
+                                    }}
+                                  >
+                                    {file.author.displayName}
+                                  </span>
+                                </>
+                              )}
+                            </span>
+                          )}
 
                           <ContextMenu
                             triggerPlacement="left"

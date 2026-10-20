@@ -141,11 +141,13 @@ public class FilesController : ControllerBase
 
         var userFiles = await _db.UserFiles.AsNoTracking()
             .Include(x => x.Folder)
+            .Include(x => x.Owner)
             .Where(x => visibleAccessLevels.Contains(x.AccessLevel))
             .OrderByDescending(x => x.UploadedAt)
             .ToListAsync();
         var postFiles = await _db.PostFiles.AsNoTracking()
             .Include(x => x.Post)
+                .ThenInclude(x => x!.Author)
             .Where(x => x.Post != null)
             .OrderByDescending(x => x.UploadedAt)
             .ToListAsync();
@@ -158,7 +160,9 @@ public class FilesController : ControllerBase
             postFiles.Count > 0 ? postFiles.Min(x => x.UploadedAt) : DateTime.UtcNow,
             string.Empty));
 
-        var files = userFiles.Select(x => ToUserFileDto(x)).ToList();
+        var files = userFiles
+            .Select(x => ToUserFileDto(x) with { Author = ToFileAuthorDto(x.Owner) })
+            .ToList();
         files.AddRange(postFiles.Select(x => new UserFileDto(
             x.Id,
             x.FileName,
@@ -180,7 +184,8 @@ public class FilesController : ControllerBase
                     : null,
             (x.ContentType ?? string.Empty).StartsWith("image/", StringComparison.OrdinalIgnoreCase)
                 ? _storage.GetPublicObjectUrl(_storage.GetIconPreviewObjectKey(x.StorageKey))
-                : null)));
+                : null,
+            ToFileAuthorDto(x.Post?.Author))));
 
         return Ok(new { folders, files });
     }
@@ -2128,4 +2133,14 @@ public class FilesController : ControllerBase
              (file.ContentType ?? string.Empty).StartsWith("video/", StringComparison.OrdinalIgnoreCase))
                 ? _storage.GetPublicObjectUrl(_storage.GetIconPreviewObjectKey(file.StorageKey))
                 : null);
+
+    private static FileAuthorDto? ToFileAuthorDto(AppUser? user) =>
+        user == null
+            ? null
+            : new FileAuthorDto(
+                user.DisplayName,
+                user.NicknameColor,
+                user.AvatarUrl == null
+                    ? null
+                    : $"/api/files/avatar/{user.Id}?v={Uri.EscapeDataString(user.AvatarUrl)}");
 }

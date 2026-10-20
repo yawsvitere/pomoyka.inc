@@ -335,6 +335,14 @@
   padding: 0 18px;
 }
 
+.fm-list.is-shared .fm-table-head,
+.fm-list.is-shared .fm-file-row,
+.fm-list.is-shared .fm-up-row {
+  grid-template-columns:
+    10px minmax(0, 2fr) minmax(0, 1.2fr) minmax(0, 1fr)
+    minmax(110px, 1.3fr) minmax(0, 1fr) 104px;
+}
+
 .fm-table-head {
   position: sticky;
   top: 0;
@@ -364,6 +372,13 @@
 .fm-table-head span:nth-child(5) {
   text-align: center;
 }
+.fm-list.is-shared .fm-table-head > span:nth-child(3),
+.fm-list.is-shared .fm-table-head > span:nth-child(4) {
+  text-align: center;
+}
+.fm-list.is-shared .fm-table-head > span:nth-child(5) {
+  text-align: left;
+}
 .fm-sort-btn {
   display: inline-flex;
   align-items: center;
@@ -381,6 +396,10 @@
 }
 .fm-table-head .fm-sort-btn:nth-child(3),
 .fm-table-head .fm-sort-btn:nth-child(4) {
+  justify-self: center;
+}
+.fm-list.is-shared .fm-table-head .fm-sort-btn:nth-child(3),
+.fm-list.is-shared .fm-table-head .fm-sort-btn:nth-child(4) {
   justify-self: center;
 }
 .fm-sort-btn:hover,
@@ -655,6 +674,39 @@
 }
 .fm-file-row > .fm-cell {
   text-align: center;
+}
+.fm-author-cell {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  min-width: 0;
+  text-align: left !important;
+}
+.fm-author-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  overflow: hidden;
+  border-radius: 50%;
+  background: var(--color-avatar-bg);
+  color: var(--color-avatar-text);
+  font-size: 10px;
+  font-weight: 700;
+}
+.fm-author-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.fm-author-name {
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .fm-cell-right {
   text-align: right;
@@ -1385,6 +1437,13 @@
       24px minmax(0, 2fr) minmax(72px, 0.9fr) minmax(90px, 1fr)
       minmax(90px, auto) 40px;
   }
+  .fm-list.is-shared .fm-table-head,
+  .fm-list.is-shared .fm-file-row,
+  .fm-list.is-shared .fm-up-row {
+    grid-template-columns:
+      24px minmax(0, 2fr) minmax(72px, 0.9fr) minmax(90px, 1fr)
+      minmax(100px, 1.2fr) minmax(90px, auto) 40px;
+  }
 }
 @media (max-width: 700px) {
   .fm-page {
@@ -1437,6 +1496,9 @@
     padding: 10px 12px;
     align-items: center;
   }
+  .fm-list.is-shared .fm-file-row {
+    grid-template-areas: "check name access actions" "check author access actions";
+  }
   .fm-row-check {
     grid-area: check;
     align-self: start;
@@ -1466,6 +1528,17 @@
   }
   .fm-cell {
     display: none;
+  }
+  .fm-list.is-shared .fm-author-cell {
+    display: flex;
+    grid-area: author;
+    justify-self: start;
+    text-align: left;
+  }
+  .fm-author-avatar {
+    width: 20px;
+    height: 20px;
+    font-size: 9px;
   }
   .fm-badge {
     grid-area: access;

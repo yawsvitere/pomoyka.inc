@@ -25,6 +25,11 @@ export interface UserFile {
   downloadUrl: string;
   previewUrl?: string | null;
   iconPreviewUrl?: string | null;
+  author?: {
+    displayName: string;
+    nicknameColor: string;
+    avatarUrl: string | null;
+  } | null;
 }
 export interface Library {
   folders: FileFolder[];

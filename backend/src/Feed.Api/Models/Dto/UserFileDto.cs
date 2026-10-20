@@ -2,7 +2,8 @@ using Feed.Api.Models;
 
 namespace Feed.Api.Models.Dto;
 
-public record UserFileDto(Guid Id, string FileName, string ContentType, long SizeBytes, int? Width, int? Height, FileAccessLevel AccessLevel, Guid? FolderId, string? FolderName, DateTime UploadedAt, string DownloadUrl, string? PreviewUrl, string? IconPreviewUrl);
+public record UserFileDto(Guid Id, string FileName, string ContentType, long SizeBytes, int? Width, int? Height, FileAccessLevel AccessLevel, Guid? FolderId, string? FolderName, DateTime UploadedAt, string DownloadUrl, string? PreviewUrl, string? IconPreviewUrl, FileAuthorDto? Author = null);
+public record FileAuthorDto(string DisplayName, string NicknameColor, string? AvatarUrl);
 public record FileFolderDto(Guid Id, string Name, FileAccessLevel AccessLevel, int FileCount, DateTime CreatedAt, string GalleryUrl);
 
 public class CreateFolderRequest
