@@ -7,6 +7,7 @@ import { AlertDialog } from "../components/ui/AlertDialog";
 import { MediaModal } from "../components/ui/MediaModal";
 import { useToast } from "../components/ui/useToast";
 import copyIcon from "../assets/icons/copy.svg";
+import checkIcon from "../assets/icons/check.svg";
 import deleteIcon from "../assets/icons/delete.svg";
 import downloadIcon from "../assets/icons/download.svg";
 import filterIcon from "../assets/icons/filter.svg";
@@ -1371,7 +1372,12 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
                       >
                         <span>{fileFilterLabels[filter]}</span>
                         {fileFilter === filter && (
-                          <span aria-hidden="true">✓</span>
+                          <img
+                            className="fm-filter-option-check"
+                            src={checkIcon}
+                            alt=""
+                            aria-hidden="true"
+                          />
                         )}
                       </button>
                     ),

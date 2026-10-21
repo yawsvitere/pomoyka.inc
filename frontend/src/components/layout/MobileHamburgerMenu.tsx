@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useAuth } from "../../context/AuthContext";
+import adminIcon from "../../assets/icons/admin.svg";
 import profileIcon from "../../assets/icons/profile.svg";
 import settingsIcon from "../../assets/icons/settings.svg";
 import archiveIcon from "../../assets/icons/archive.svg";
 import pencilIcon from "../../assets/icons/pencil.svg";
+import pinterestIcon from "../../assets/icons/pinterest.svg";
+import shareFileIcon from "../../assets/icons/sharefile.svg";
 import storageIcon from "../../assets/icons/storage.svg";
 import { AvatarMedia } from "../ui/AvatarMedia";
 import { AppExternalLink, AppLink } from "../ui/AppLink";
@@ -32,8 +35,8 @@ const navigationItems = [
   { label: "Архив", path: "/archive", icon: archiveIcon },
   { label: "Постишки", path: "/posts", icon: pencilIcon },
   { label: "Файлы", path: "/files", icon: storageIcon },
-  { label: "Общие файлы", path: "/files/common", icon: storageIcon },
-  { label: "Пинтерест", path: "/pinterest", icon: storageIcon },
+  { label: "Общие файлы", path: "/files/common", icon: shareFileIcon },
+  { label: "Пинтерест", path: "/pinterest", icon: pinterestIcon },
 ];
 
 export function MobileHamburgerMenu({
@@ -166,10 +169,7 @@ export function MobileHamburgerMenu({
                   className="mobile-menu-item"
                   onClick={handleNavigation}
                 >
-                  <span
-                    className="mobile-menu-item-dot"
-                    aria-hidden="true"
-                  ></span>
+                  <img src={adminIcon} alt="" aria-hidden="true" />
                   <span>Админка</span>
                 </AppLink>
               )}

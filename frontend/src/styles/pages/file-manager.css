@@ -517,6 +517,7 @@
 }
 
 .fm-row-check {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -547,10 +548,16 @@
 .fm-row-check input[type="checkbox"]:checked {
   background: var(--color-text);
   border-color: var(--color-text);
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='M3.5 8.2L6.3 11l6-6.4' stroke='%23181818' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: center;
-  background-size: 11px;
+}
+.fm-row-check:has(input[type="checkbox"]:checked:not(:indeterminate))::after {
+  position: absolute;
+  width: 11px;
+  height: 11px;
+  background: #000;
+  content: "";
+  pointer-events: none;
+  -webkit-mask: url("../../assets/icons/check.svg") center / contain no-repeat;
+  mask: url("../../assets/icons/check.svg") center / contain no-repeat;
 }
 .fm-table-head .fm-row-check input[type="checkbox"] {
   opacity: 1;
@@ -1173,6 +1180,13 @@
 .fm-filter-option.is-selected {
   background: var(--color-surface-hover);
   color: var(--color-text);
+}
+.fm-filter-option-check {
+  display: block;
+  flex: 0 0 auto;
+  width: 13px;
+  height: 13px;
+  filter: brightness(0) invert(1);
 }
 .fm-sort-btn:focus-visible,
 .fm-selection-bar button:focus-visible,

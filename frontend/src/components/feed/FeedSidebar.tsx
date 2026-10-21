@@ -3,6 +3,7 @@ import type { FormEvent } from "react";
 import type { FeedBanner, Post, PostFile } from "../../api/types";
 import type { FeedPoll } from "../../api/types";
 import * as postsApi from "../../api/posts";
+import checkIcon from "../../assets/icons/check.svg";
 import { AppExternalLink, AppLink } from "../ui/AppLink";
 import { AvatarMedia } from "../ui/AvatarMedia";
 import { getBrowserFileUrl } from "../../utils/fileUrl";
@@ -225,7 +226,7 @@ function PollCard({
             <>
               {isClosed && isSelected && (
                 <span className="feed-poll-mine" aria-label="Ваш голос">
-                  ✓
+                  <img src={checkIcon} alt="" aria-hidden="true" />
                 </span>
               )}
               <span className="feed-poll-text">{option.text}</span>
