@@ -7,8 +7,10 @@ namespace Feed.Api.Services;
 
 public sealed class ImagePreviewBackgroundService : BackgroundService
 {
-    private readonly Channel<ImagePreviewJob> _jobs;
-    private readonly ConcurrentDictionary<string, byte> _pending = new(StringComparer.Ordinal);
+    private readonly Channel<ImagePreviewJob> _priorityJobs;
+    private readonly Channel<ImagePreviewJob> _secondaryJobs;
+    private readonly SemaphoreSlim _jobSignal = new(0);
+    private readonly ConcurrentDictionary<ImagePreviewJob, byte> _pending = new();
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<ImagePreviewBackgroundService> _logger;
     private readonly IConfiguration _configuration;
@@ -21,28 +23,35 @@ public sealed class ImagePreviewBackgroundService : BackgroundService
         _scopeFactory = scopeFactory;
         _logger = logger;
         _configuration = configuration;
-        _jobs = Channel.CreateBounded<ImagePreviewJob>(new BoundedChannelOptions(
-            Math.Clamp(_configuration.GetValue<int?>("PreviewWorker:QueueCapacity") ?? 200, 10, 2_000))
-        {
-            FullMode = BoundedChannelFullMode.Wait,
-            SingleWriter = false,
-            SingleReader = false
-        });
+        var queueCapacity = Math.Clamp(
+            _configuration.GetValue<int?>("PreviewWorker:QueueCapacity") ?? 200,
+            10,
+            2_000);
+        _priorityJobs = CreateQueue(queueCapacity);
+        _secondaryJobs = CreateQueue(queueCapacity);
     }
 
     public void Enqueue(string storageKey, string contentType)
     {
-        if (!_pending.TryAdd(storageKey, 0))
-            return;
-
-        if (!_jobs.Writer.TryWrite(new ImagePreviewJob(storageKey, contentType)))
+        if (contentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
         {
-            _pending.TryRemove(storageKey, out _);
-            _logger.LogWarning("Preview queue is full; postponing preview for {StorageKey}", storageKey);
+            var feedJob = new ImagePreviewJob(
+                storageKey,
+                contentType,
+                ImagePreviewVariant.Feed);
+            TryEnqueue(feedJob, _priorityJobs.Writer);
+            return;
         }
+
+        if (contentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase))
+            TryEnqueue(new ImagePreviewJob(storageKey, contentType), _secondaryJobs.Writer);
     }
 
-    public void Forget(string storageKey) => _pending.TryRemove(storageKey, out _);
+    public void Forget(string storageKey)
+    {
+        foreach (var job in _pending.Keys.Where(job => job.StorageKey == storageKey))
+            _pending.TryRemove(job, out _);
+    }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -57,17 +66,38 @@ public sealed class ImagePreviewBackgroundService : BackgroundService
 
     private async Task ProcessQueueAsync(CancellationToken stoppingToken)
     {
-        await foreach (var job in _jobs.Reader.ReadAllAsync(stoppingToken))
+        while (!stoppingToken.IsCancellationRequested)
         {
+            var job = await ReadNextJobAsync(stoppingToken);
             try
             {
                 using var scope = _scopeFactory.CreateScope();
                 var storage = scope.ServiceProvider.GetRequiredService<IStorageService>();
-                var preview = job.ContentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase)
-                    ? null
-                    : await storage.CreateImagePreviewAsync(job.StorageKey, job.ContentType);
-                if (job.ContentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase))
+                ImagePreviewResult? preview = null;
+                if (job.Variant is { } variant)
+                    preview = await storage.CreateImagePreviewAsync(
+                        job.StorageKey,
+                        job.ContentType,
+                        variant);
+                else
                     await storage.CreateVideoPreviewAsync(job.StorageKey, job.ContentType);
+
+                if (job.Variant == ImagePreviewVariant.Feed)
+                {
+                    TryEnqueue(
+                        new ImagePreviewJob(
+                            job.StorageKey,
+                            job.ContentType,
+                            ImagePreviewVariant.Standard),
+                        _secondaryJobs.Writer);
+                    TryEnqueue(
+                        new ImagePreviewJob(
+                            job.StorageKey,
+                            job.ContentType,
+                            ImagePreviewVariant.Icon),
+                        _secondaryJobs.Writer);
+                }
+
                 if (preview is { Width: > 0, Height: > 0 })
                 {
                     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -100,9 +130,48 @@ public sealed class ImagePreviewBackgroundService : BackgroundService
             }
             finally
             {
-                _pending.TryRemove(job.StorageKey, out _);
+                _pending.TryRemove(job, out _);
             }
         }
+    }
+
+    private async Task<ImagePreviewJob> ReadNextJobAsync(CancellationToken cancellationToken)
+    {
+        while (true)
+        {
+            if (_priorityJobs.Reader.TryRead(out var job))
+            {
+                _jobSignal.Wait(0);
+                return job;
+            }
+            if (_secondaryJobs.Reader.TryRead(out job))
+            {
+                _jobSignal.Wait(0);
+                return job;
+            }
+
+            await _jobSignal.WaitAsync(cancellationToken);
+        }
+    }
+
+    private bool TryEnqueue(
+        ImagePreviewJob job,
+        ChannelWriter<ImagePreviewJob> writer)
+    {
+        if (!_pending.TryAdd(job, 0))
+            return true;
+
+        if (writer.TryWrite(job))
+        {
+            _jobSignal.Release();
+            return true;
+        }
+
+        _pending.TryRemove(job, out _);
+        _logger.LogWarning(
+            "Preview queue is full; postponing preview for {StorageKey}",
+            job.StorageKey);
+        return false;
     }
 
     private async Task EnqueueMissingPreviewsAsync(CancellationToken cancellationToken)
@@ -141,19 +210,26 @@ public sealed class ImagePreviewBackgroundService : BackgroundService
                 .Select(file => new { file.StorageKey, file.ContentType })
                 .ToListAsync(cancellationToken);
 
-            foreach (var file in files.Concat(postFiles).Concat(commentFiles).Concat(archivedFiles)
-                .DistinctBy(file => file.StorageKey))
-            {
-                if (storage.GetImagePreviewObjectKeys(file.StorageKey)
+            var imageFiles = files.Concat(postFiles).Concat(commentFiles).Concat(archivedFiles)
+                .DistinctBy(file => file.StorageKey)
+                .Where(file => storage.GetImagePreviewObjectKeys(file.StorageKey)
                     .Any(previewKey => !existingPreviews.Contains(previewKey)))
-                    await EnqueueReconciledAsync(file.StorageKey, file.ContentType, cancellationToken);
-            }
+                .ToArray();
+
+            foreach (var file in imageFiles)
+                await EnqueueReconciledJobAsync(
+                    new ImagePreviewJob(file.StorageKey, file.ContentType, ImagePreviewVariant.Feed),
+                    _priorityJobs.Writer,
+                    cancellationToken);
 
             foreach (var file in videoFiles.DistinctBy(file => file.StorageKey))
             {
                 if (storage.GetVideoPreviewObjectKeys(file.StorageKey)
                     .Any(previewKey => !existingPreviews.Contains(previewKey)))
-                    await EnqueueReconciledAsync(file.StorageKey, file.ContentType, cancellationToken);
+                    await EnqueueReconciledJobAsync(
+                        new ImagePreviewJob(file.StorageKey, file.ContentType),
+                        _secondaryJobs.Writer,
+                        cancellationToken);
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -166,24 +242,36 @@ public sealed class ImagePreviewBackgroundService : BackgroundService
         }
     }
 
-    private async ValueTask EnqueueReconciledAsync(
-        string storageKey,
-        string contentType,
+    private async ValueTask EnqueueReconciledJobAsync(
+        ImagePreviewJob job,
+        ChannelWriter<ImagePreviewJob> writer,
         CancellationToken cancellationToken)
     {
-        if (!_pending.TryAdd(storageKey, 0))
+        if (!_pending.TryAdd(job, 0))
             return;
 
         try
         {
-            await _jobs.Writer.WriteAsync(new ImagePreviewJob(storageKey, contentType), cancellationToken);
+            await writer.WriteAsync(job, cancellationToken);
+            _jobSignal.Release();
         }
         catch
         {
-            _pending.TryRemove(storageKey, out _);
+            _pending.TryRemove(job, out _);
             throw;
         }
     }
 
-    private sealed record ImagePreviewJob(string StorageKey, string ContentType);
+    private static Channel<ImagePreviewJob> CreateQueue(int capacity) =>
+        Channel.CreateBounded<ImagePreviewJob>(new BoundedChannelOptions(capacity)
+        {
+            FullMode = BoundedChannelFullMode.Wait,
+            SingleWriter = false,
+            SingleReader = false
+        });
+
+    private sealed record ImagePreviewJob(
+        string StorageKey,
+        string ContentType,
+        ImagePreviewVariant? Variant = null);
 }

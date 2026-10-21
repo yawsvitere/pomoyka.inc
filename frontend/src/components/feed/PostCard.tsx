@@ -31,6 +31,8 @@ interface PostCardProps {
   authorLinks?: boolean;
   showArticleLink?: boolean;
   videoPreview?: boolean;
+  delayedPreviewFileIds?: ReadonlySet<string>;
+  onPreviewDelayComplete?: (fileId: string) => void;
   isOwnPost?: boolean;
   onOpenComments?: () => void;
   onCommentReaction?: (commentId: string, emoji: string) => void;
@@ -46,6 +48,9 @@ const MAX_ROW_HEIGHT = 360;
 const MAX_TALL_MEDIA_HEIGHT = 500;
 const MAX_SINGLE_IMAGE_WIDTH = 865;
 const FALLBACK_GALLERY_WIDTH = 600;
+const PREVIEW_START_DELAY_MS = 30;
+const PREVIEW_RETRY_DELAY_MS = 400;
+const NO_DELAYED_PREVIEW_FILE_IDS: ReadonlySet<string> = new Set();
 
 const ratioCache = new Map<string, ImageRatio>();
 const loadedImageCache = new Set<string>();
@@ -407,17 +412,21 @@ function GalleryVideoTile({
 function PostImageGallery({
   files,
   videoAutoPlay = false,
+  delayedPreviewFileIds = NO_DELAYED_PREVIEW_FILE_IDS,
+  onPreviewDelayComplete,
   onOpenVideo,
 }: {
   files: Post["files"];
   videoAutoPlay?: boolean;
+  delayedPreviewFileIds?: ReadonlySet<string>;
+  onPreviewDelayComplete?: (fileId: string) => void;
   onOpenVideo?: (video: { name: string; url: string }) => void;
 }) {
   const galleryRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(0);
-  const [previewStarted, setPreviewStarted] = useState(() =>
-    files.every((file) => loadedImageCache.has(file.id)),
-  );
+  const [startedPreviewFileIds, setStartedPreviewFileIds] = useState<
+    ReadonlySet<string>
+  >(() => new Set());
   const [retryCounts, setRetryCounts] = useState<Record<string, number>>({});
   const [loadedImages, setLoadedImages] = useState<Record<string, boolean>>(
     () =>
@@ -442,14 +451,39 @@ function PostImageGallery({
   const retryTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>(
     {},
   );
+  const previewStartTimersRef = useRef<
+    Record<string, ReturnType<typeof setTimeout>>
+  >({});
   useEffect(() => {
-    if (previewStarted) return;
-    const timer = setTimeout(() => setPreviewStarted(true), 750);
-    return () => clearTimeout(timer);
-  }, [previewStarted]);
+    for (const file of files) {
+      if (
+        !delayedPreviewFileIds.has(file.id) ||
+        loadedImageCache.has(file.id) ||
+        startedPreviewFileIds.has(file.id) ||
+        previewStartTimersRef.current[file.id]
+      )
+        continue;
+
+      previewStartTimersRef.current[file.id] = setTimeout(() => {
+        delete previewStartTimersRef.current[file.id];
+        setStartedPreviewFileIds((started) => {
+          const next = new Set(started);
+          next.add(file.id);
+          return next;
+        });
+        onPreviewDelayComplete?.(file.id);
+      }, PREVIEW_START_DELAY_MS);
+    }
+  }, [
+    files,
+    delayedPreviewFileIds,
+    startedPreviewFileIds,
+    onPreviewDelayComplete,
+  ]);
   useEffect(
     () => () => {
       Object.values(retryTimersRef.current).forEach(clearTimeout);
+      Object.values(previewStartTimersRef.current).forEach(clearTimeout);
     },
     [],
   );
@@ -493,6 +527,10 @@ function PostImageGallery({
     ratioCache.set(fileId, ratioMapRef.current[fileId]);
     setRatiosVersion((version) => version + 1);
   };
+  const isPreviewStarted = (fileId: string) =>
+    !delayedPreviewFileIds.has(fileId) ||
+    loadedImageCache.has(fileId) ||
+    startedPreviewFileIds.has(fileId);
   const renderImage = (item: GalleryItem) => {
     const fileUrl = getBrowserFileUrl(item.file.downloadUrl);
     const previewUrl = getBrowserFileUrl(item.file.previewUrl);
@@ -533,7 +571,7 @@ function PostImageGallery({
           <GalleryVideoTile
             file={item.file}
             autoPlay={videoAutoPlay}
-            enabled={previewStarted || loadedImageCache.has(item.file.id)}
+            enabled={isPreviewStarted(item.file.id)}
             onMetadata={handleVideoMetadata}
             onOpen={() =>
               onOpenVideo?.({
@@ -547,8 +585,7 @@ function PostImageGallery({
             <img
               className="post-image"
               src={
-                previewStarted ||
-                loadedImageCache.has(item.file.id) ||
+                isPreviewStarted(item.file.id) ||
                 originalFallbacks[item.file.id]
                   ? imageUrl
                   : undefined
@@ -578,7 +615,7 @@ function PostImageGallery({
                     ...counts,
                     [item.file.id]: (counts[item.file.id] ?? 0) + 1,
                   }));
-                }, 1000);
+                }, PREVIEW_RETRY_DELAY_MS);
               }}
               style={{ objectFit: "cover" }}
             />
@@ -761,6 +798,8 @@ export function PostCard({
   authorLinks = false,
   showArticleLink = false,
   videoPreview = false,
+  delayedPreviewFileIds = NO_DELAYED_PREVIEW_FILE_IDS,
+  onPreviewDelayComplete,
   isOwnPost = false,
   onOpenComments,
   onCommentReaction,
@@ -976,6 +1015,8 @@ export function PostCard({
                     <PostImageGallery
                       files={galleryFiles}
                       videoAutoPlay={videoPreview}
+                      delayedPreviewFileIds={delayedPreviewFileIds}
+                      onPreviewDelayComplete={onPreviewDelayComplete}
                       onOpenVideo={(video) => setActiveVideo(video)}
                     />
                   )}

@@ -17,7 +17,10 @@ public interface IStorageService
     Task DeleteObjectsAsync(IEnumerable<string> objectKeys);
     Task CopyObjectAsync(string sourceKey, string destinationKey);
     Task UploadObjectAsync(string objectKey, Stream content, string contentType);
-    Task<ImagePreviewResult?> CreateImagePreviewAsync(string sourceKey, string contentType);
+    Task<ImagePreviewResult?> CreateImagePreviewAsync(
+        string sourceKey,
+        string contentType,
+        ImagePreviewVariant variant);
     Task<string?> CreateVideoPreviewAsync(string sourceKey, string contentType);
     Task<string> CreateAvatarVideoAsync(Stream content, int? cropX = null, int? cropY = null, int? cropWidth = null, int? cropHeight = null);
     Task<string> UploadDeduplicatedObjectAsync(Stream content, string contentType);
@@ -35,6 +38,13 @@ public interface IStorageService
 }
 
 public sealed record ImagePreviewResult(string PreviewKey, int Width, int Height);
+
+public enum ImagePreviewVariant
+{
+    Icon,
+    Standard,
+    Feed
+}
 
 public class StorageService : IStorageService
 {
@@ -173,63 +183,72 @@ public class StorageService : IStorageService
     public IEnumerable<string> GetVideoPreviewObjectKeys(string objectKey) =>
         new[] { GetIconPreviewObjectKey(objectKey), GetVideoPreviewObjectKey(objectKey) };
 
-    public async Task<ImagePreviewResult?> CreateImagePreviewAsync(string sourceKey, string contentType)
+    public async Task<ImagePreviewResult?> CreateImagePreviewAsync(
+        string sourceKey,
+        string contentType,
+        ImagePreviewVariant variant)
     {
         if (!contentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
             return null;
 
-        int originalWidth;
-        int originalHeight;
-        using (var source = await _s3.GetObjectAsync(_bucket, sourceKey))
+        var imageDimensions = variant == ImagePreviewVariant.Feed
+            ? await GetImageDimensionsAsync(sourceKey)
+            : null;
+        var previewVariant = variant switch
         {
-            var imageInfo = await Image.IdentifyAsync(source.ResponseStream)
-                ?? throw new InvalidOperationException($"Could not identify image {sourceKey}.");
-            originalWidth = imageInfo.Width;
-            originalHeight = imageInfo.Height;
-            if ((long)originalWidth * originalHeight > _maxImagePixels)
-                throw new InvalidOperationException($"Image {sourceKey} exceeds the preview pixel limit.");
-        }
+            ImagePreviewVariant.Icon =>
+                (Key: GetIconPreviewObjectKey(sourceKey), Resize: "fill:30:30"),
+            ImagePreviewVariant.Standard =>
+                (Key: GetPreviewObjectKey(sourceKey), Resize: "fit:360:0"),
+            ImagePreviewVariant.Feed =>
+                (Key: GetFeedPreviewObjectKey(sourceKey), Resize: "fit:865:0"),
+            _ => throw new ArgumentOutOfRangeException(nameof(variant), variant, null)
+        };
 
         var escapedKey = string.Join("/", sourceKey.Split('/').Select(Uri.EscapeDataString));
         var sourceUrl = Uri.EscapeDataString(
             $"{_imgproxySourceEndpoint}/{Uri.EscapeDataString(_bucket)}/{escapedKey}");
-        var previewVariants = new[]
+        try
         {
-            (Key: GetIconPreviewObjectKey(sourceKey), Resize: "fill:30:30"),
-            (Key: GetPreviewObjectKey(sourceKey), Resize: "fit:360:0"),
-            (Key: GetFeedPreviewObjectKey(sourceKey), Resize: "fit:865:0")
-        };
-        foreach (var (previewKey, resize) in previewVariants)
+            await _s3.GetObjectMetadataAsync(_bucket, previewVariant.Key);
+            return variant == ImagePreviewVariant.Feed ? imageDimensions : null;
+        }
+        catch (AmazonS3Exception exception) when (
+            exception.StatusCode == System.Net.HttpStatusCode.NotFound)
         {
-            try
-            {
-                await _s3.GetObjectMetadataAsync(_bucket, previewKey);
-                continue;
-            }
-            catch (AmazonS3Exception exception) when (
-                exception.StatusCode == System.Net.HttpStatusCode.NotFound)
-            {
-            }
-
-            var imgproxyUrl =
-                $"{_imgproxyEndpoint.TrimEnd('/')}/insecure/rs:{resize}/q:82/plain/{sourceUrl}@webp";
-            using var response = await _httpClient.GetAsync(
-                imgproxyUrl,
-                HttpCompletionOption.ResponseHeadersRead);
-            response.EnsureSuccessStatusCode();
-            var contentLength = response.Content.Headers.ContentLength;
-            if (contentLength.HasValue && contentLength.Value > _maxPreviewBytes)
-                throw new InvalidOperationException($"Preview for {sourceKey} exceeds the size limit.");
-
-            await using var preview = new MemoryStream();
-            await using var previewStream = await response.Content.ReadAsStreamAsync();
-            await CopyToWithLimitAsync(previewStream, preview, _maxPreviewBytes);
-            preview.Position = 0;
-            await UploadObjectAsync(previewKey, preview, "image/webp");
         }
 
-        var feedPreviewKey = GetPreviewObjectKey(sourceKey);
-        return new ImagePreviewResult(feedPreviewKey, originalWidth, originalHeight);
+        var imgproxyUrl =
+            $"{_imgproxyEndpoint.TrimEnd('/')}/insecure/rs:{previewVariant.Resize}/q:82/plain/{sourceUrl}@webp";
+        using var response = await _httpClient.GetAsync(
+            imgproxyUrl,
+            HttpCompletionOption.ResponseHeadersRead);
+        response.EnsureSuccessStatusCode();
+        var contentLength = response.Content.Headers.ContentLength;
+        if (contentLength.HasValue && contentLength.Value > _maxPreviewBytes)
+            throw new InvalidOperationException($"Preview for {sourceKey} exceeds the size limit.");
+
+        await using var preview = new MemoryStream();
+        await using var previewStream = await response.Content.ReadAsStreamAsync();
+        await CopyToWithLimitAsync(previewStream, preview, _maxPreviewBytes);
+        preview.Position = 0;
+        await UploadObjectAsync(previewVariant.Key, preview, "image/webp");
+
+        return variant == ImagePreviewVariant.Feed ? imageDimensions : null;
+    }
+
+    private async Task<ImagePreviewResult> GetImageDimensionsAsync(string sourceKey)
+    {
+        using var source = await _s3.GetObjectAsync(_bucket, sourceKey);
+        var imageInfo = await Image.IdentifyAsync(source.ResponseStream)
+            ?? throw new InvalidOperationException($"Could not identify image {sourceKey}.");
+        if ((long)imageInfo.Width * imageInfo.Height > _maxImagePixels)
+            throw new InvalidOperationException($"Image {sourceKey} exceeds the preview pixel limit.");
+
+        return new ImagePreviewResult(
+            GetFeedPreviewObjectKey(sourceKey),
+            imageInfo.Width,
+            imageInfo.Height);
     }
 
     public async Task<string?> CreateVideoPreviewAsync(string sourceKey, string contentType)

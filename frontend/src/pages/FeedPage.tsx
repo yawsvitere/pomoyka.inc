@@ -92,6 +92,38 @@ export function FeedPage() {
   const [hasMore, setHasMore] = useState(true);
   const [openComments, setOpenComments] = useState<Set<string>>(new Set());
   const nextPageRef = useRef(1);
+  const [delayedPreviewFileIds, setDelayedPreviewFileIds] = useState<
+    ReadonlySet<string>
+  >(() => new Set());
+
+  const deferPreviewsForFiles = useCallback(
+    (files: Post["files"]) => {
+      const fileIds = files
+        .filter(
+          (file) =>
+            file.contentType.startsWith("image/") ||
+            file.contentType.startsWith("video/"),
+        )
+        .map((file) => file.id);
+      if (fileIds.length === 0) return;
+
+      setDelayedPreviewFileIds((current) => {
+        const next = new Set(current);
+        fileIds.forEach((fileId) => next.add(fileId));
+        return next;
+      });
+    },
+    [],
+  );
+
+  const clearPreviewDelay = useCallback((fileId: string) => {
+    setDelayedPreviewFileIds((current) => {
+      if (!current.has(fileId)) return current;
+      const next = new Set(current);
+      next.delete(fileId);
+      return next;
+    });
+  }, []);
 
   const refreshSidebar = useCallback(async () => {
     const [nextBanners, nextPostishki, nextPolls] = await Promise.all([
@@ -149,6 +181,7 @@ export function FeedPage() {
       .build();
 
     connection.on("NewPost", (newPost: Post) => {
+      deferPreviewsForFiles(newPost.files);
       setPosts((currentPosts) =>
         currentPosts.some((post) => post.id === newPost.id)
           ? currentPosts
@@ -200,6 +233,7 @@ export function FeedPage() {
     connection.on(
       "PostFileAdded",
       (postId: string, file: Post["files"][number]) => {
+        deferPreviewsForFiles([file]);
         setPosts((currentPosts) =>
           currentPosts.map((post) =>
             post.id === postId &&
@@ -295,7 +329,7 @@ export function FeedPage() {
     return () => {
       connection.stop();
     };
-  }, [refreshSidebar, notify]);
+  }, [refreshSidebar, notify, deferPreviewsForFiles]);
 
   const loadFeed = useCallback(
     async (page: number) => {
@@ -356,6 +390,7 @@ export function FeedPage() {
       );
       postForFeed = await postsApi.getPost(newPost.id);
     }
+    deferPreviewsForFiles(postForFeed.files);
     setPosts((currentPosts) =>
       currentPosts.some((post) => post.id === postForFeed.id)
         ? currentPosts.map((post) =>
@@ -479,6 +514,8 @@ export function FeedPage() {
                       authorLinks
                       showArticleLink
                       videoPreview
+                      delayedPreviewFileIds={delayedPreviewFileIds}
+                      onPreviewDelayComplete={clearPreviewDelay}
                       commentsOpen={openComments.has(post.id)}
                       onOpenComments={() =>
                         setOpenComments((current) =>
