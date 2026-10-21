@@ -206,6 +206,7 @@ export function FeedComposer({
     failedDraftKey !== draftKey;
   const onErrorRef = useRef(onError);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
   const dragDepthRef = useRef(0);
 
   const canSubmit =
@@ -274,6 +275,43 @@ export function FeedComposer({
     });
   }, [draftKey, loadedDraftKey, text, selectedFiles]);
 
+  useEffect(() => {
+    function handleGlobalKeyDown(event: KeyboardEvent) {
+      if (
+        event.key !== "Enter" ||
+        event.shiftKey ||
+        event.altKey ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.isComposing ||
+        event.defaultPrevented ||
+        !(event.target instanceof HTMLElement)
+      ) {
+        return;
+      }
+
+      const fileInput =
+        event.target instanceof HTMLInputElement &&
+        event.target.type === "file";
+      if (
+        !fileInput &&
+        (event.target.isContentEditable ||
+          event.target.closest(
+            "input, textarea, select, [contenteditable='true'], button, a",
+          ))
+      ) {
+        return;
+      }
+
+      event.preventDefault();
+      if (fileInput) event.target.blur();
+      formRef.current?.requestSubmit();
+    }
+
+    window.addEventListener("keydown", handleGlobalKeyDown);
+    return () => window.removeEventListener("keydown", handleGlobalKeyDown);
+  }, []);
+
   function addFiles(files: File[]) {
     if (files.length === 0 || isDraftLoading) return;
     setSelectedFiles((currentFiles) => [...currentFiles, ...files]);
@@ -313,6 +351,7 @@ export function FeedComposer({
 
       <div className="composer-dock">
         <form
+          ref={formRef}
           className={`composer${isDragActive ? " is-drag-active" : ""}${
             selectedFiles.length > 0 ? " has-files" : ""
           }`}
@@ -413,6 +452,7 @@ export function FeedComposer({
                   onChange={(event) => {
                     addFiles(Array.from(event.currentTarget.files ?? []));
                     event.currentTarget.value = "";
+                    event.currentTarget.blur();
                   }}
                 />
               </label>

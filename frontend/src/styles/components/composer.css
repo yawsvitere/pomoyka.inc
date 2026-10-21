@@ -23,6 +23,12 @@
   pointer-events: none;
 }
 
+.composer,
+.composer * {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 .composer {
   position: relative;
   display: flex;
@@ -219,12 +225,11 @@
 }
 
 .composer-tool:hover {
-  border-color: var(--color-border-subtle);
+  border-color: transparent;
   background: var(--composer-accent-soft);
   color: var(--composer-accent-strong);
 }
 
-.composer-tool:focus-within,
 .composer-tool:focus-visible {
   outline: 2px solid var(--composer-accent);
   outline-offset: 2px;

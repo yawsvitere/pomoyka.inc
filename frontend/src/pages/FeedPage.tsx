@@ -478,6 +478,7 @@ export function FeedPage() {
                       }
                       authorLinks
                       showArticleLink
+                      videoPreview
                       commentsOpen={openComments.has(post.id)}
                       onOpenComments={() =>
                         setOpenComments((current) =>

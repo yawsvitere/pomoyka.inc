@@ -276,6 +276,32 @@ public class FilesController : ControllerBase
         var userFiles = await userFilesQuery
             .OrderByDescending(x => x.UploadedAt)
             .ToListAsync();
+        var postFilesQuery = _db.PostFiles.AsNoTracking()
+            .Include(x => x.Post)
+                .ThenInclude(x => x!.Author)
+            .Where(x => x.Post != null &&
+                (x.Post.AccessLevel == PostAccessLevel.Public ||
+                 x.Post.AccessLevel == PostAccessLevel.Authenticated) &&
+                (x.ContentType.StartsWith("image/") || x.ContentType.StartsWith("video/")))
+            .AsQueryable();
+        if (fromDate.HasValue)
+        {
+            var from = fromDate.Value.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+            postFilesQuery = postFilesQuery.Where(x => x.UploadedAt >= from);
+        }
+        if (toDate.HasValue && toDate.Value < DateOnly.MaxValue)
+        {
+            var toExclusive = toDate.Value.AddDays(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+            postFilesQuery = postFilesQuery.Where(x => x.UploadedAt < toExclusive);
+        }
+        if (normalizedMediaType == "image")
+            postFilesQuery = postFilesQuery.Where(x => x.ContentType.StartsWith("image/"));
+        else if (normalizedMediaType == "video")
+            postFilesQuery = postFilesQuery.Where(x => x.ContentType.StartsWith("video/"));
+
+        var postFiles = await postFilesQuery
+            .OrderByDescending(x => x.UploadedAt)
+            .ToListAsync();
         var authors = userFiles
             .Where(x => x.Owner != null)
             .Select(x => new PinterestAuthorDto(
@@ -283,6 +309,13 @@ public class FilesController : ControllerBase
                 x.Owner!.DisplayName,
                 x.Owner.NicknameColor,
                 ToFileAuthorDto(x.Owner)!.AvatarUrl))
+            .Concat(postFiles
+                .Where(x => x.Post?.Author != null)
+                .Select(x => new PinterestAuthorDto(
+                    x.Post!.AuthorId,
+                    x.Post.Author!.DisplayName,
+                    x.Post.Author.NicknameColor,
+                    ToFileAuthorDto(x.Post.Author)!.AvatarUrl)))
             .DistinctBy(x => x.Id)
             .OrderBy(x => x.DisplayName)
             .ToList();
@@ -303,8 +336,24 @@ public class FilesController : ControllerBase
                     : null,
             x.OwnerId,
             ToFileAuthorDto(x.Owner))).ToList();
+        media.AddRange(postFiles
+            .Where(x => !authorId.HasValue || x.Post!.AuthorId == authorId.Value)
+            .Select(x => new PinterestMediaDto(
+                x.Id.ToString(),
+                x.FileName,
+                x.ContentType,
+                null,
+                null,
+                x.UploadedAt,
+                _storage.GetPublicObjectUrl(x.StorageKey),
+                x.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)
+                    ? _storage.GetPublicObjectUrl(_storage.GetFeedPreviewObjectKey(x.StorageKey))
+                    : _storage.GetPublicObjectUrl(_storage.GetVideoPreviewObjectKey(x.StorageKey)),
+                x.Post!.AuthorId,
+                ToFileAuthorDto(x.Post.Author))));
         var librarySha256Keys = userFiles
             .Select(x => x.StorageKey)
+            .Concat(postFiles.Select(x => x.StorageKey))
             .Where(x => x.StartsWith("sha256/", StringComparison.Ordinal))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 

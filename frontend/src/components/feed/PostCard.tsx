@@ -19,6 +19,7 @@ import { ContextMenu, ReactionChip } from "./ContextMenu";
 import { useAuth } from "../../context/AuthContext";
 import { getBrowserFileUrl } from "../../utils/fileUrl";
 import { AvatarMedia } from "../ui/AvatarMedia";
+import { MediaModal } from "../ui/MediaModal";
 import { AppExternalLink, AppLink } from "../ui/AppLink";
 import { getPostishkaUrl } from "../../utils/postishkaUrl";
 export type PostCardData = Omit<Post, "reactionCounts" | "reactions"> &
@@ -29,6 +30,7 @@ interface PostCardProps {
   commentsOpen?: boolean;
   authorLinks?: boolean;
   showArticleLink?: boolean;
+  videoPreview?: boolean;
   isOwnPost?: boolean;
   onOpenComments?: () => void;
   onCommentReaction?: (commentId: string, emoji: string) => void;
@@ -320,7 +322,97 @@ function calculateLayout(
   );
 }
 
-function PostImageGallery({ files }: { files: Post["files"] }) {
+function GalleryVideoTile({
+  file,
+  autoPlay,
+  enabled,
+  onMetadata,
+  onOpen,
+}: {
+  file: Post["files"][number];
+  autoPlay: boolean;
+  enabled: boolean;
+  onMetadata: (fileId: string, width: number, height: number) => void;
+  onOpen: () => void;
+}) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [useOriginal, setUseOriginal] = useState(false);
+  const [loaded, setLoaded] = useState(() => loadedImageCache.has(file.id));
+  const [playing, setPlaying] = useState(false);
+  const src = getBrowserFileUrl(
+    useOriginal ? file.downloadUrl : file.previewUrl,
+  );
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !autoPlay || !enabled) return undefined;
+    if (typeof IntersectionObserver === "undefined") {
+      void video.play().catch(() => undefined);
+      return () => video.pause();
+    }
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) void video.play().catch(() => undefined);
+        else video.pause();
+      },
+      { threshold: 0.25 },
+    );
+    observer.observe(video);
+    return () => {
+      observer.disconnect();
+      video.pause();
+    };
+  }, [autoPlay, enabled, src]);
+
+  return (
+    <button
+      type="button"
+      className="post-video-tile"
+      data-loaded={loaded ? "true" : "false"}
+      data-playing={playing ? "true" : "false"}
+      aria-label={`Открыть видео ${file.fileName}`}
+      onClick={onOpen}
+      onMouseEnter={() => {
+        if (!autoPlay) void videoRef.current?.play().catch(() => undefined);
+      }}
+      onMouseLeave={() => {
+        if (!autoPlay) videoRef.current?.pause();
+      }}
+    >
+      <video
+        ref={videoRef}
+        src={enabled ? `${src}${src.includes("#") ? "" : "#t=0.1"}` : undefined}
+        aria-hidden="true"
+        muted
+        loop
+        playsInline
+        preload="metadata"
+        onLoadedMetadata={(event) => {
+          const { videoWidth, videoHeight } = event.currentTarget;
+          loadedImageCache.add(file.id);
+          setLoaded(true);
+          onMetadata(file.id, videoWidth, videoHeight);
+        }}
+        onPlay={() => setPlaying(true)}
+        onPause={() => setPlaying(false)}
+        onError={() => {
+          if (!useOriginal) setUseOriginal(true);
+        }}
+      />
+      <span className="post-video-badge" aria-hidden="true" />
+    </button>
+  );
+}
+
+function PostImageGallery({
+  files,
+  videoAutoPlay = false,
+  onOpenVideo,
+}: {
+  files: Post["files"];
+  videoAutoPlay?: boolean;
+  onOpenVideo?: (video: { name: string; url: string }) => void;
+}) {
   const galleryRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(0);
   const [previewStarted, setPreviewStarted] = useState(() =>
@@ -391,6 +483,16 @@ function PostImageGallery({ files }: { files: Post["files"] }) {
       setRatiosVersion((version) => version + 1);
     }
   };
+  const handleVideoMetadata = (
+    fileId: string,
+    width: number,
+    height: number,
+  ) => {
+    if (ratioMapRef.current[fileId] || !width || !height) return;
+    ratioMapRef.current[fileId] = { width, height };
+    ratioCache.set(fileId, ratioMapRef.current[fileId]);
+    setRatiosVersion((version) => version + 1);
+  };
   const renderImage = (item: GalleryItem) => {
     const fileUrl = getBrowserFileUrl(item.file.downloadUrl);
     const previewUrl = getBrowserFileUrl(item.file.previewUrl);
@@ -400,7 +502,8 @@ function PostImageGallery({ files }: { files: Post["files"] }) {
       : retryCount
         ? `${previewUrl}${previewUrl.includes("?") ? "&" : "?"}retry=${retryCount}`
         : previewUrl;
-    const isSingleImage = files.length === 1;
+    const isVideo = item.file.contentType.startsWith("video/");
+    const isSingleImage = files.length === 1 && !isVideo;
     const dimensions = getDimensions(item.file, ratioMapRef.current);
     const singleImageWidth = Math.min(
       MAX_SINGLE_IMAGE_WIDTH,
@@ -410,7 +513,7 @@ function PostImageGallery({ files }: { files: Post["files"] }) {
 
     return (
       <div
-        className={`post-image-link${isSingleImage ? " post-image-link--single" : ""}`}
+        className={`post-image-link${isSingleImage ? " post-image-link--single" : ""}${isVideo ? " post-image-link--video" : ""}`}
         key={item.file.id}
         style={{
           flex: layout.type === "rows" ? `${item.ratio} 1 0` : undefined,
@@ -425,46 +528,61 @@ function PostImageGallery({ files }: { files: Post["files"] }) {
             isSingleImage || layout.type === "mosaic" ? item.ratio : undefined,
         }}
       >
-        <PhotoView src={fileUrl}>
-          <img
-            className="post-image"
-            src={
-              previewStarted ||
-              loadedImageCache.has(item.file.id) ||
-              originalFallbacks[item.file.id]
-                ? imageUrl
-                : undefined
+        {isVideo ? (
+          <GalleryVideoTile
+            file={item.file}
+            autoPlay={videoAutoPlay}
+            enabled={previewStarted || loadedImageCache.has(item.file.id)}
+            onMetadata={handleVideoMetadata}
+            onOpen={() =>
+              onOpenVideo?.({
+                name: item.file.fileName,
+                url: fileUrl,
+              })
             }
-            data-loaded={loadedImages[item.file.id] ? "true" : "false"}
-            onLoad={(event) => {
-              loadedImageCache.add(item.file.id);
-              setLoadedImages((loaded) => ({
-                ...loaded,
-                [item.file.id]: true,
-              }));
-              handleImageLoad(event, item.file.id);
-            }}
-            onError={() => {
-              if (originalFallbacks[item.file.id]) return;
-              if (retryCount >= 12) {
-                setOriginalFallbacks((fallbacks) => ({
-                  ...fallbacks,
+          />
+        ) : (
+          <PhotoView src={fileUrl}>
+            <img
+              className="post-image"
+              src={
+                previewStarted ||
+                loadedImageCache.has(item.file.id) ||
+                originalFallbacks[item.file.id]
+                  ? imageUrl
+                  : undefined
+              }
+              data-loaded={loadedImages[item.file.id] ? "true" : "false"}
+              onLoad={(event) => {
+                loadedImageCache.add(item.file.id);
+                setLoadedImages((loaded) => ({
+                  ...loaded,
                   [item.file.id]: true,
                 }));
-                return;
-              }
-              clearTimeout(retryTimersRef.current[item.file.id]);
-              retryTimersRef.current[item.file.id] = setTimeout(() => {
-                delete retryTimersRef.current[item.file.id];
-                setRetryCounts((counts) => ({
-                  ...counts,
-                  [item.file.id]: (counts[item.file.id] ?? 0) + 1,
-                }));
-              }, 1000);
-            }}
-            style={{ objectFit: "cover" }}
-          />
-        </PhotoView>
+                handleImageLoad(event, item.file.id);
+              }}
+              onError={() => {
+                if (originalFallbacks[item.file.id]) return;
+                if (retryCount >= 12) {
+                  setOriginalFallbacks((fallbacks) => ({
+                    ...fallbacks,
+                    [item.file.id]: true,
+                  }));
+                  return;
+                }
+                clearTimeout(retryTimersRef.current[item.file.id]);
+                retryTimersRef.current[item.file.id] = setTimeout(() => {
+                  delete retryTimersRef.current[item.file.id];
+                  setRetryCounts((counts) => ({
+                    ...counts,
+                    [item.file.id]: (counts[item.file.id] ?? 0) + 1,
+                  }));
+                }, 1000);
+              }}
+              style={{ objectFit: "cover" }}
+            />
+          </PhotoView>
+        )}
       </div>
     );
   };
@@ -499,15 +617,62 @@ function PostImageGallery({ files }: { files: Post["files"] }) {
   );
 }
 
-function PostVideo({ file }: { file: Post["files"][number] }) {
+function PostVideo({
+  file,
+  onOpenVideo,
+  minWidth,
+}: {
+  file: Post["files"][number];
+  onOpenVideo?: (video: { name: string; url: string }) => void;
+  minWidth?: number;
+}) {
   const [ratio, setRatio] = useState<number | null>(null);
   const [videoWidth, setVideoWidth] = useState<number | null>(null);
+  const isPreview = Boolean(onOpenVideo);
+  const previewVideoRef = useRef<HTMLVideoElement>(null);
+  const previewIsVisibleRef = useRef(false);
 
   const handleLoadedMetadata = (event: SyntheticEvent<HTMLVideoElement>) => {
     const { videoWidth, videoHeight } = event.currentTarget;
     if (!videoWidth || !videoHeight) return;
     setRatio(videoWidth / videoHeight);
     setVideoWidth(videoWidth);
+  };
+
+  useEffect(() => {
+    if (!isPreview || !previewVideoRef.current) return undefined;
+    const video = previewVideoRef.current;
+    if (typeof IntersectionObserver === "undefined") {
+      previewIsVisibleRef.current = true;
+      void video.play().catch(() => undefined);
+      return () => {
+        previewIsVisibleRef.current = false;
+        video.pause();
+      };
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        previewIsVisibleRef.current = entry.isIntersecting;
+        if (entry.isIntersecting) {
+          void video.play().catch(() => undefined);
+        } else {
+          video.pause();
+        }
+      },
+      { threshold: 0.1 },
+    );
+    observer.observe(video);
+    return () => {
+      previewIsVisibleRef.current = false;
+      observer.disconnect();
+      video.pause();
+    };
+  }, [isPreview]);
+
+  const handlePreviewCanPlay = (event: SyntheticEvent<HTMLVideoElement>) => {
+    if (previewIsVisibleRef.current)
+      void event.currentTarget.play().catch(() => undefined);
   };
 
   const style: CSSProperties = {};
@@ -519,21 +684,51 @@ function PostVideo({ file }: { file: Post["files"][number] }) {
       MAX_VIDEO_HEIGHT / videoHeight,
     );
     style.aspectRatio = `${ratio}`;
-    style.width = `${videoWidth * scale}px`;
+    style.width = `${Math.max(
+      ratio >= 1 ? (minWidth ?? 0) : 0,
+      videoWidth * scale,
+    )}px`;
     style.maxWidth = "100%";
   }
 
   return (
     <div className="post-video" style={style}>
-      <VideoPlayer>
-        <VideoSkin>
-          <Video
-            src={getBrowserFileUrl(file.downloadUrl)}
+      {onOpenVideo ? (
+        <button
+          type="button"
+          className="post-video-preview"
+          aria-label={`Открыть видео ${file.fileName}`}
+          onClick={() =>
+            onOpenVideo({
+              name: file.fileName,
+              url: getBrowserFileUrl(file.downloadUrl),
+            })
+          }
+        >
+          <video
+            ref={previewVideoRef}
+            src={getBrowserFileUrl(file.previewUrl)}
+            aria-hidden="true"
+            autoPlay
+            muted
+            loop
             playsInline
+            preload="metadata"
             onLoadedMetadata={handleLoadedMetadata}
+            onCanPlay={handlePreviewCanPlay}
           />
-        </VideoSkin>
-      </VideoPlayer>
+        </button>
+      ) : (
+        <VideoPlayer>
+          <VideoSkin>
+            <Video
+              src={getBrowserFileUrl(file.downloadUrl)}
+              playsInline
+              onLoadedMetadata={handleLoadedMetadata}
+            />
+          </VideoSkin>
+        </VideoPlayer>
+      )}
     </div>
   );
 }
@@ -564,6 +759,7 @@ export function PostCard({
   commentsOpen = false,
   authorLinks = false,
   showArticleLink = false,
+  videoPreview = false,
   isOwnPost = false,
   onOpenComments,
   onCommentReaction,
@@ -573,6 +769,10 @@ export function PostCard({
 }: PostCardProps) {
   const { user } = useAuth();
   const [localCommentsOpen, setLocalCommentsOpen] = useState(false);
+  const [activeVideo, setActiveVideo] = useState<{
+    name: string;
+    url: string;
+  } | null>(null);
   const [reactionAnimation, setReactionAnimation] = useState<{
     emoji: string;
     trigger: number;
@@ -624,6 +824,17 @@ export function PostCard({
       !file.contentType.startsWith("video/") &&
       !file.contentType.startsWith("audio/"),
   );
+
+  // Фото и видео — в одну общую сетку. Одиночное видео остаётся плеером.
+  const mediaFiles = post.files.filter(
+    (file) =>
+      file.contentType.startsWith("image/") ||
+      file.contentType.startsWith("video/"),
+  );
+  const galleryFiles =
+    mediaFiles.length > 1 || imageFiles.length === 1 ? mediaFiles : [];
+  const singleVideo =
+    mediaFiles.length === 1 && videoFiles.length === 1 ? videoFiles[0] : null;
 
   const MAX_REACTION_AVATARS = 5;
   const reactionChips =
@@ -733,7 +944,7 @@ export function PostCard({
             <span className="post-avatar-spacer" aria-hidden="true" />
           )}
           <div
-            className={`post-body${imageFiles.length > 1 ? " post-body--with-files" : ""}${imageFiles.length === 1 ? " post-body--single-image" : ""}${isMediaOnly ? " post-body--media-only" : ""}${isReactionsOnly ? " post-body--reactions-only" : ""}${isTextOnly ? " post-body--text-only" : ""}${post.isPostishka || post.relatedPostId ? " post-body--postishka-preview" : ""}`}
+            className={`post-body${galleryFiles.length > 1 ? " post-body--with-files" : ""}${galleryFiles.length === 1 ? " post-body--single-image" : ""}${isMediaOnly ? " post-body--media-only" : ""}${isReactionsOnly ? " post-body--reactions-only" : ""}${isTextOnly ? " post-body--text-only" : ""}${post.isPostishka || post.relatedPostId ? " post-body--postishka-preview" : ""}`}
           >
             {showAuthor && (
               <div className="post-meta">
@@ -760,12 +971,27 @@ export function PostCard({
             {post.files.length > 0 && !post.isPostishka && (
               <div className="post-files-wrap">
                 <div className="post-files">
-                  {imageFiles.length > 0 && (
-                    <PostImageGallery files={imageFiles} />
+                  {galleryFiles.length > 0 && (
+                    <PostImageGallery
+                      files={galleryFiles}
+                      videoAutoPlay={videoPreview}
+                      onOpenVideo={(video) => setActiveVideo(video)}
+                    />
                   )}
-                  {videoFiles.map((file) => (
-                    <PostVideo key={file.id} file={file} />
-                  ))}
+                  {singleVideo && (
+                    <PostVideo
+                      key={singleVideo.id}
+                      file={singleVideo}
+                      minWidth={
+                        videoPreview && post.files.length === 1 ? 550 : 0
+                      }
+                      onOpenVideo={
+                        videoPreview
+                          ? (video) => setActiveVideo(video)
+                          : undefined
+                      }
+                    />
+                  )}
                   {audioFiles.map((file) => (
                     <div className="post-audio" key={file.id}>
                       <AudioPlayer>
@@ -792,14 +1018,16 @@ export function PostCard({
                     </AppExternalLink>
                   ))}
                 </div>
-                {imageFiles.length > 0 && !hasPostText && !reactionChips && (
-                  <span className="post-time post-time--on-image">
-                    {new Date(post.createdAt).toLocaleTimeString([], {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </span>
-                )}
+                {(galleryFiles.length > 0 || (videoPreview && singleVideo)) &&
+                  !hasPostText &&
+                  !reactionChips && (
+                    <span className="post-time post-time--on-image">
+                      {new Date(post.createdAt).toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </span>
+                  )}
               </div>
             )}
             {post.isPostishka ? (
@@ -869,10 +1097,11 @@ export function PostCard({
             )}
             {!reactionChips &&
               !post.isPostishka &&
-              imageFiles.length === 0 &&
+              galleryFiles.length === 0 &&
+              !(videoPreview && singleVideo) &&
               !hasPostText && (
                 <span
-                  className={`post-time post-time--bottom${videoFiles.length > 0 ? " post-time--below-video" : ""}`}
+                  className={`post-time post-time--bottom${singleVideo ? " post-time--below-video" : ""}`}
                 >
                   {new Date(post.createdAt).toLocaleTimeString([], {
                     hour: "2-digit",
@@ -897,6 +1126,14 @@ export function PostCard({
           </div>
         </article>
       </ContextMenu>
+      {activeVideo && (
+        <MediaModal
+          type="video"
+          name={activeVideo.name}
+          url={activeVideo.url}
+          onClose={() => setActiveVideo(null)}
+        />
+      )}
     </PhotoProvider>
   );
 }
