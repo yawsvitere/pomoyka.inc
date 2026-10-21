@@ -1158,8 +1158,10 @@
   padding: 5px;
   border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-md, 10px);
-  background: var(--color-surface-raised);
+  background: var(--surface-glass-bg);
   box-shadow: var(--shadow-md, 0 8px 24px rgb(0 0 0 / 16%));
+  -webkit-backdrop-filter: var(--surface-glass-filter);
+  backdrop-filter: var(--surface-glass-filter);
 }
 .fm-filter-option {
   display: flex;
@@ -1309,9 +1311,21 @@
   padding: 5px;
   border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-md, 10px);
-  background: var(--color-surface-raised);
+  background: var(--surface-glass-bg);
   box-shadow: var(--shadow-md, 0 8px 24px rgb(0 0 0 / 16%));
+  -webkit-backdrop-filter: var(--surface-glass-filter);
+  backdrop-filter: var(--surface-glass-filter);
 }
+
+@supports not (
+  (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))
+) {
+  .fm-filter-menu,
+  .fm-access-menu {
+    background: var(--surface-glass-bg-fallback);
+  }
+}
+
 .fm-access-option {
   display: flex;
   align-items: center;

@@ -514,6 +514,7 @@ function PostImageGallery({
     return (
       <div
         className={`post-image-link${isSingleImage ? " post-image-link--single" : ""}${isVideo ? " post-image-link--video" : ""}`}
+        data-post-file-id={item.file.id}
         key={item.file.id}
         style={{
           flex: layout.type === "rows" ? `${item.ratio} 1 0` : undefined,
@@ -692,7 +693,7 @@ function PostVideo({
   }
 
   return (
-    <div className="post-video" style={style}>
+    <div className="post-video" data-post-file-id={file.id} style={style}>
       {onOpenVideo ? (
         <button
           type="button"
@@ -993,7 +994,11 @@ export function PostCard({
                     />
                   )}
                   {audioFiles.map((file) => (
-                    <div className="post-audio" key={file.id}>
+                    <div
+                      className="post-audio"
+                      data-post-file-id={file.id}
+                      key={file.id}
+                    >
                       <AudioPlayer>
                         <AudioSkin>
                           <Audio
@@ -1007,6 +1012,7 @@ export function PostCard({
                   {otherFiles.map((file) => (
                     <AppExternalLink
                       className="post-file"
+                      data-post-file-id={file.id}
                       key={file.id}
                       href={getBrowserFileUrl(file.downloadUrl)}
                     >

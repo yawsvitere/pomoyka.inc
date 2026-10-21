@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type MouseEvent,
@@ -122,7 +123,6 @@ export function ReactionIcon({
     <img
       className="context-menu-reaction-icon"
       src={imageUrl}
-      alt={emoji}
       draggable="false"
     />
   );
@@ -225,22 +225,85 @@ export function ContextMenu({
   const [position, setPosition] = useState<{ x: number; y: number } | null>(
     null,
   );
+  const [menuOffset, setMenuOffset] = useState({ x: 0, y: 0 });
+  const [menuPositioned, setMenuPositioned] = useState(false);
+  const [viewportVersion, setViewportVersion] = useState(0);
+  const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const popoverRef = useRef<HTMLDivElement>(null);
   const unlockScrollRef = useRef<(() => void) | null>(null);
   const longPressTimerRef = useRef<number | null>(null);
   const suppressOpenUntilRef = useRef(0);
-  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+  const touchStartRef = useRef<{
+    x: number;
+    y: number;
+    fileId: string | null;
+  } | null>(null);
 
   const isTouchDevice = () =>
     window.matchMedia("(pointer: coarse)").matches ||
     navigator.maxTouchPoints > 0;
 
+  const openMenuAt = (x: number, y: number, fileId: string | null = null) => {
+    setMenuOffset({ x: 0, y: 0 });
+    setMenuPositioned(false);
+    setSelectedFileId(fileId);
+    setPosition({ x, y });
+  };
+
   const closeMenu = () => {
     suppressOpenUntilRef.current = Date.now() + 100;
     setPosition(null);
+    setMenuPositioned(false);
     if (activeMenuCloser === closeMenu) activeMenuCloser = null;
   };
+
+  useLayoutEffect(() => {
+    if (!position) return;
+
+    const popover = popoverRef.current;
+    if (!popover) return;
+
+    const rect = popover.getBoundingClientRect();
+    const margin = 8;
+    const viewportWidth =
+      document.documentElement.clientWidth || window.innerWidth;
+    const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
+
+    const availableWidth = viewportWidth - margin * 2;
+    const availableHeight = viewportHeight - margin * 2;
+
+    const deltaX =
+      rect.width > availableWidth
+        ? rect.left < margin
+          ? margin - rect.left
+          : 0
+        : rect.left < margin
+          ? margin - rect.left
+          : rect.right > viewportWidth - margin
+            ? viewportWidth - margin - rect.right
+            : 0;
+    const deltaY =
+      rect.height > availableHeight
+        ? rect.top < margin
+          ? margin - rect.top
+          : 0
+        : rect.top < margin
+          ? margin - rect.top
+          : rect.bottom > viewportHeight - margin
+            ? viewportHeight - margin - rect.bottom
+            : 0;
+
+    if (Math.abs(deltaX) > 0.5 || Math.abs(deltaY) > 0.5) {
+      setMenuOffset((current) => ({
+        x: current.x + deltaX,
+        y: current.y + deltaY,
+      }));
+      return;
+    }
+
+    setMenuPositioned(true);
+  }, [position, menuOffset, viewportVersion]);
 
   useEffect(() => {
     if (!position) return;
@@ -261,8 +324,17 @@ export function ContextMenu({
     document.body.style.overflow = "hidden";
     document.documentElement.style.overflow = "hidden";
 
-    const preventScroll = (event: Event) => event.preventDefault();
+    const preventScroll = (event: Event) => {
+      const target = event.target;
+      if (target instanceof Node && popoverRef.current?.contains(target))
+        return;
+      event.preventDefault();
+    };
     const preventKeyboardScroll = (event: KeyboardEvent) => {
+      const target = event.target;
+      if (target instanceof Node && popoverRef.current?.contains(target))
+        return;
+
       if (
         [
           "ArrowDown",
@@ -331,6 +403,14 @@ export function ContextMenu({
     document.addEventListener("keydown", preventKeyboardScroll);
     document.addEventListener("keydown", handleEscape);
 
+    const handleViewportResize = () => {
+      setMenuOffset({ x: 0, y: 0 });
+      setMenuPositioned(false);
+      setViewportVersion((version) => version + 1);
+    };
+    window.addEventListener("resize", handleViewportResize);
+    window.visualViewport?.addEventListener("resize", handleViewportResize);
+
     return () => {
       window.cancelAnimationFrame(subscribeId);
       unlockScroll();
@@ -355,6 +435,11 @@ export function ContextMenu({
       });
       document.removeEventListener("keydown", handleEscape);
       document.removeEventListener("keydown", preventKeyboardScroll);
+      window.removeEventListener("resize", handleViewportResize);
+      window.visualViewport?.removeEventListener(
+        "resize",
+        handleViewportResize,
+      );
     };
   }, [position]);
 
@@ -371,15 +456,14 @@ export function ContextMenu({
     const rect = trigger.getBoundingClientRect();
     event.preventDefault();
     event.stopPropagation();
-    setPosition({
-      x:
-        triggerPlacement === "right"
-          ? rect.right
-          : triggerPlacement === "left"
-            ? rect.left
-            : rect.left + rect.width / 2,
-      y: triggerPlacement === "center" ? rect.top + rect.height / 2 : rect.top,
-    });
+    openMenuAt(
+      triggerPlacement === "right"
+        ? rect.right
+        : triggerPlacement === "left"
+          ? rect.left
+          : rect.left + rect.width / 2,
+      triggerPlacement === "center" ? rect.top + rect.height / 2 : rect.top,
+    );
   }
 
   function handleContextMenu(event: MouseEvent<HTMLDivElement>) {
@@ -395,7 +479,14 @@ export function ContextMenu({
 
     event.preventDefault();
     event.stopPropagation();
-    setPosition({ x: event.clientX, y: event.clientY });
+    const media = event.target instanceof Element
+      ? event.target.closest<HTMLElement>("[data-post-file-id]")
+      : null;
+    openMenuAt(
+      event.clientX,
+      event.clientY,
+      media?.dataset.postFileId ?? null,
+    );
   }
 
   function cancelLongPress() {
@@ -415,11 +506,19 @@ export function ContextMenu({
     const touch = event.touches[0];
     if (!touch) return;
 
-    touchStartRef.current = { x: touch.clientX, y: touch.clientY };
+    const media = event.target instanceof Element
+      ? event.target.closest<HTMLElement>("[data-post-file-id]")
+      : null;
+    touchStartRef.current = {
+      x: touch.clientX,
+      y: touch.clientY,
+      fileId: media?.dataset.postFileId ?? null,
+    };
+    const fileId = touchStartRef.current.fileId;
     cancelLongPress();
     longPressTimerRef.current = window.setTimeout(() => {
       event.preventDefault();
-      setPosition({ x: touch.clientX, y: touch.clientY });
+      openMenuAt(touch.clientX, touch.clientY, fileId);
       cancelLongPress();
     }, 450);
   }
@@ -467,6 +566,10 @@ export function ContextMenu({
     link.click();
   }
 
+  function downloadAllFiles(files: Post["files"]) {
+    files.forEach(downloadFile);
+  }
+
   async function copyImage(file: Post["files"][number]) {
     try {
       const response = await fetch(getBrowserFileUrl(file.downloadUrl));
@@ -479,9 +582,9 @@ export function ContextMenu({
     }
   }
 
-  const imageFiles = post
-    ? post.files.filter((file) => file.contentType.startsWith("image/"))
-    : [];
+  const selectedFile =
+    post?.files.find((file) => file.id === selectedFileId) ??
+    (post?.files.length === 1 ? post.files[0] : undefined);
 
   return (
     <div
@@ -532,8 +635,9 @@ export function ContextMenu({
               className={`context-menu-popover${triggerPlacement === "left" ? " context-menu-popover--left" : ""}${popoverClassName ? ` ${popoverClassName}` : ""}`}
               ref={popoverRef}
               style={{
-                left: position.x,
-                top: position.y,
+                left: position.x + menuOffset.x,
+                top: position.y + menuOffset.y,
+                visibility: menuPositioned ? "visible" : "hidden",
                 pointerEvents: "auto",
               }}
               onClick={(event) => event.stopPropagation()}
@@ -583,7 +687,6 @@ export function ContextMenu({
                           key={emoji}
                           type="button"
                           onClick={() => run(() => onReaction(emoji))}
-                          title={emoji}
                         >
                           <ReactionIcon emoji={emoji} />
                         </button>
@@ -622,33 +725,55 @@ export function ContextMenu({
 
                     {post && post.files.length > 0 && (
                       <div className="context-menu__section">
-                        {post.files.map((file) => (
+                        {selectedFile && (
                           <button
-                            key={file.id}
+                            key={selectedFile.id}
                             type="button"
                             className="context-menu__item"
-                            onClick={() => run(() => downloadFile(file))}
+                            onClick={() => run(() => downloadFile(selectedFile))}
                           >
                             <MenuIcon src={downloadIcon} />
                             <span className="context-menu__label">
-                              Скачать {file.fileName}
+                              {selectedFile.contentType.startsWith("image/")
+                                ? "Скачать изображение"
+                                : selectedFile.contentType.startsWith("video/")
+                                  ? "Скачать видео"
+                                  : "Скачать файл"}
                             </span>
                           </button>
-                        ))}
+                        )}
 
-                        {imageFiles.map((file) => (
+                        {post.files.length > 1 && (
                           <button
-                            key={`copy-${file.id}`}
+                            key="download-all"
                             type="button"
                             className="context-menu__item"
-                            onClick={() => run(() => void copyImage(file))}
+                            onClick={() =>
+                              run(() => downloadAllFiles(post.files))
+                            }
+                          >
+                            <MenuIcon src={downloadIcon} />
+                            <span className="context-menu__label">
+                              Скачать все ({post.files.length})
+                            </span>
+                          </button>
+                        )}
+
+                        {selectedFile?.contentType.startsWith("image/") && (
+                          <button
+                            key={`copy-${selectedFile.id}`}
+                            type="button"
+                            className="context-menu__item"
+                            onClick={() =>
+                              run(() => void copyImage(selectedFile))
+                            }
                           >
                             <MenuIcon src={copyIcon} />
                             <span className="context-menu__label">
                               Копировать изображение
                             </span>
                           </button>
-                        ))}
+                        )}
                       </div>
                     )}
 

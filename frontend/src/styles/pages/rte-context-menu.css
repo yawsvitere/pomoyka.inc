@@ -1,5 +1,4 @@
 .rte-context-menu {
-  --rte-bg: var(--color-border-subtle);
   --rte-border: rgba(255, 255, 255, 0.08);
   --rte-shadow: rgba(0, 0, 0, 0.45);
   --rte-text: var(--color-text-light);
@@ -15,12 +14,14 @@
   max-width: 240px;
   max-height: calc(100vh - 16px);
   padding: 4px;
-  background: var(--rte-bg);
+  background: var(--surface-glass-bg);
   border: 1px solid var(--rte-border);
   border-radius: 10px;
   box-shadow:
     0 8px 24px var(--rte-shadow),
     0 2px 6px rgba(0, 0, 0, 0.3);
+  -webkit-backdrop-filter: var(--surface-glass-filter);
+  backdrop-filter: var(--surface-glass-filter);
   display: flex;
   flex-direction: column;
   gap: 1px;
@@ -29,6 +30,14 @@
   line-height: 1.2;
   -webkit-font-smoothing: antialiased;
   animation: rte-menu-in 0.12s ease-out;
+}
+
+@supports not (
+  (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))
+) {
+  .rte-context-menu {
+    background: var(--surface-glass-bg-fallback);
+  }
 }
 
 @keyframes rte-menu-in {

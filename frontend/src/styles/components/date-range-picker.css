@@ -65,11 +65,21 @@
   padding: 14px;
   border: 1px solid color-mix(in srgb, var(--color-text) 10%, transparent);
   border-radius: 22px;
-  background: var(--color-surface);
+  background: var(--surface-glass-bg);
   box-shadow:
     0 18px 50px rgba(0, 0, 0, 0.35),
     0 2px 8px rgba(0, 0, 0, 0.2);
+  -webkit-backdrop-filter: var(--surface-glass-filter);
+  backdrop-filter: var(--surface-glass-filter);
   animation: drp-in 0.16s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@supports not (
+  (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))
+) {
+  .drp-popover {
+    background: var(--surface-glass-bg-fallback);
+  }
 }
 
 .drp-popover--end {

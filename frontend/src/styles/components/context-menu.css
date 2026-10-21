@@ -26,7 +26,6 @@
 }
 
 .context-menu-reactions {
-  --rct-bg: var(--color-border-subtle);
   --rct-border: rgba(255, 255, 255, 0.08);
   --rct-shadow: rgba(0, 0, 0, 0.45);
   --rct-hover: rgba(255, 255, 255, 0.08);
@@ -35,12 +34,14 @@
   align-items: center;
   gap: 2px;
   padding: 5px 6px;
-  background: var(--rct-bg);
+  background: var(--surface-glass-bg);
   border: 1px solid var(--rct-border);
   border-radius: 999px;
   box-shadow:
     0 8px 24px var(--rct-shadow),
     0 2px 6px rgba(0, 0, 0, 0.3);
+  -webkit-backdrop-filter: var(--surface-glass-filter);
+  backdrop-filter: var(--surface-glass-filter);
   animation: rte-menu-in 0.12s ease-out;
 }
 
@@ -55,6 +56,8 @@
   border-radius: 999px;
   font-size: 17px;
   line-height: 1;
+  user-select: none;
+  -webkit-user-select: none;
   cursor: pointer;
   transition:
     transform 0.12s ease,
@@ -106,7 +109,6 @@
 }
 
 .context-menu {
-  --cm-bg: var(--color-border-subtle);
   --cm-border: rgba(255, 255, 255, 0.08);
   --cm-shadow: rgba(0, 0, 0, 0.45);
   --cm-text: var(--color-text-light);
@@ -119,12 +121,14 @@
   min-width: 220px;
   max-width: 260px;
   padding: 4px;
-  background: var(--cm-bg);
+  background: var(--surface-glass-bg);
   border: 1px solid var(--cm-border);
   border-radius: 10px;
   box-shadow:
     0 8px 24px var(--cm-shadow),
     0 2px 6px rgba(0, 0, 0, 0.3);
+  -webkit-backdrop-filter: var(--surface-glass-filter);
+  backdrop-filter: var(--surface-glass-filter);
   display: flex;
   flex-direction: column;
   gap: 1px;
@@ -132,6 +136,18 @@
   line-height: 1.2;
   -webkit-font-smoothing: antialiased;
   animation: rte-menu-in 0.12s ease-out;
+}
+
+@supports not (
+  (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))
+) {
+  .context-menu-reactions {
+    background: var(--surface-glass-bg-fallback);
+  }
+
+  .context-menu {
+    background: var(--surface-glass-bg-fallback);
+  }
 }
 
 @keyframes rte-menu-in {

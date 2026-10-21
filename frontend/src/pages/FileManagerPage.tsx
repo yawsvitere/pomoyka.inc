@@ -6,12 +6,15 @@ import { ContextMenu } from "../components/feed/ContextMenu";
 import { AlertDialog } from "../components/ui/AlertDialog";
 import { MediaModal } from "../components/ui/MediaModal";
 import { useToast } from "../components/ui/useToast";
-import copyIcon from "../assets/icons/copy.svg";
 import checkIcon from "../assets/icons/check.svg";
 import deleteIcon from "../assets/icons/delete.svg";
 import downloadIcon from "../assets/icons/download.svg";
 import filterIcon from "../assets/icons/filter.svg";
 import folderIcon from "../assets/icons/folder.svg";
+import pencilIcon from "../assets/icons/pencil.svg";
+import pinterestIcon from "../assets/icons/pinterest.svg";
+import plusIcon from "../assets/icons/+.svg";
+import shareIcon from "../assets/icons/share.svg";
 import searchIcon from "../assets/icons/search.svg";
 import { getBrowserFileUrl } from "../utils/fileUrl";
 import "react-photo-view/dist/react-photo-view.css";
@@ -768,9 +771,6 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
       );
     }
   }
-  async function toggleFile(file: filesApi.UserFile) {
-    await setFileAccess(file, file.accessLevel === 2 ? 0 : 2);
-  }
   async function setFolderAccess(
     item: filesApi.FileFolder,
     accessLevel: filesApi.FileAccessLevel,
@@ -791,9 +791,6 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
         reason?.response?.data?.message ?? "Не удалось изменить доступ",
       );
     }
-  }
-  async function toggleFolder(item: filesApi.FileFolder) {
-    await setFolderAccess(item, item.accessLevel === 2 ? 0 : 2);
   }
   async function openMedia(file: filesApi.UserFile) {
     if (!isVideo(file) && !isAudio(file)) return;
@@ -1499,29 +1496,38 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
                               onClick: () => setFolderId(item.id),
                             },
                             {
+                              key: "open-gallery",
+                              label: "Открыть галерею",
+                              icon: pinterestIcon,
+                              href: `${window.location.origin}/files/gallery/${item.id}`,
+                            },
+                            {
                               key: "rename",
                               label: "Переименовать",
+                              icon: pencilIcon,
                               onClick: () =>
                                 startRename({ type: "folder", item }),
                             },
                             {
                               key: "share",
                               label: "Поделиться",
-                              icon: copyIcon,
+                              icon: shareIcon,
                               onClick: () =>
                                 void copyShareUrl(
                                   `${window.location.origin}/files/gallery/${item.id}`,
                                 ),
                             },
-                            {
-                              key: "toggle-visibility",
-                              label:
-                                item.accessLevel === 2
-                                  ? "Скрыть галерею"
-                                  : "Открыть галерею",
-                              icon: downloadIcon,
-                              onClick: () => void toggleFolder(item),
-                            },
+                            ...(item.id !==
+                            "00000000-0000-0000-0000-000000000000"
+                              ? [
+                                  {
+                                    key: "download-archive",
+                                    label: "Скачать архивом (.7z)",
+                                    icon: downloadIcon,
+                                    onClick: () => downloadFolderArchive(item),
+                                  },
+                                ]
+                              : []),
                             {
                               key: "delete",
                               label: "Удалить",
@@ -1590,13 +1596,6 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
                               triggerPlacement="left"
                               customActions={[
                                 {
-                                  key: "public",
-                                  label: "Сделать публичным",
-                                  className: "access-2",
-                                  disabled: item.accessLevel === 2,
-                                  onClick: () => void setFolderAccess(item, 2),
-                                },
-                                {
                                   key: "authenticated",
                                   label: "Только авторизованным",
                                   className: "access-1",
@@ -1632,15 +1631,22 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
                                     onClick: () => setFolderId(item.id),
                                   },
                                   {
+                                    key: "open-gallery",
+                                    label: "Открыть галерею",
+                                    icon: pinterestIcon,
+                                    href: `${window.location.origin}/files/gallery/${item.id}`,
+                                  },
+                                  {
                                     key: "rename",
                                     label: "Переименовать",
+                                    icon: pencilIcon,
                                     onClick: () =>
                                       startRename({ type: "folder", item }),
                                   },
                                   {
                                     key: "share",
                                     label: "Поделиться",
-                                    icon: copyIcon,
+                                    icon: shareIcon,
                                     onClick: () =>
                                       void copyShareUrl(
                                         `${window.location.origin}/files/gallery/${item.id}`,
@@ -1658,15 +1664,6 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
                                         },
                                       ]
                                     : []),
-                                  {
-                                    key: "toggle-visibility",
-                                    label:
-                                      item.accessLevel === 2
-                                        ? "Скрыть галерею"
-                                        : "Открыть галерею",
-                                    icon: downloadIcon,
-                                    onClick: () => void toggleFolder(item),
-                                  },
                                   {
                                     key: "delete",
                                     label: "Удалить",
@@ -1718,7 +1715,7 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
                           {
                             key: "open",
                             label: "Открыть",
-                            icon: downloadIcon,
+                            icon: plusIcon,
                             ...(isVideo(file) || isAudio(file)
                               ? { onClick: () => void openMedia(file) }
                               : {
@@ -1734,27 +1731,29 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
                           {
                             key: "rename",
                             label: "Переименовать",
+                            icon: pencilIcon,
                             onClick: () =>
                               startRename({ type: "file", item: file }),
                           },
                           {
                             key: "share",
                             label: "Поделиться",
-                            icon: copyIcon,
+                            icon: shareIcon,
                             onClick: () =>
                               void copyShareUrl(
                                 `${window.location.origin}/files/file/${file.id}`,
                               ),
                           },
-                          {
-                            key: "toggle-visibility",
-                            label:
-                              file.accessLevel === 2
-                                ? "Сделать приватным"
-                                : "Сделать публичным",
-                            icon: downloadIcon,
-                            onClick: () => void toggleFile(file),
-                          },
+                          ...(file.accessLevel === 2
+                            ? [
+                                {
+                                  key: "private",
+                                  label: "Сделать приватным",
+                                  icon: downloadIcon,
+                                  onClick: () => void setFileAccess(file, 0),
+                                },
+                              ]
+                            : []),
                           {
                             key: "delete",
                             label: "Удалить",
@@ -1906,13 +1905,6 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
                             triggerPlacement="left"
                             customActions={[
                               {
-                                key: "public",
-                                label: "Сделать публичным",
-                                className: "access-2",
-                                disabled: file.accessLevel === 2,
-                                onClick: () => void setFileAccess(file, 2),
-                              },
-                              {
                                 key: "authenticated",
                                 label: "Только авторизованным",
                                 className: "access-1",
@@ -1945,7 +1937,7 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
                                 {
                                   key: "open",
                                   label: "Открыть",
-                                  icon: downloadIcon,
+                                  icon: plusIcon,
                                   ...(isVideo(file) || isAudio(file)
                                     ? { onClick: () => openMedia(file) }
                                     : {
@@ -1961,27 +1953,30 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
                                 {
                                   key: "rename",
                                   label: "Переименовать",
+                                  icon: pencilIcon,
                                   onClick: () =>
                                     startRename({ type: "file", item: file }),
                                 },
                                 {
                                   key: "share",
                                   label: "Поделиться",
-                                  icon: copyIcon,
+                                  icon: shareIcon,
                                   onClick: () =>
                                     void copyShareUrl(
                                       `${window.location.origin}/files/file/${file.id}`,
                                     ),
                                 },
-                                {
-                                  key: "toggle-visibility",
-                                  label:
-                                    file.accessLevel === 2
-                                      ? "Сделать приватным"
-                                      : "Сделать публичным",
-                                  icon: downloadIcon,
-                                  onClick: () => void toggleFile(file),
-                                },
+                                ...(file.accessLevel === 2
+                                  ? [
+                                      {
+                                        key: "private",
+                                        label: "Сделать приватным",
+                                        icon: downloadIcon,
+                                        onClick: () =>
+                                          void setFileAccess(file, 0),
+                                      },
+                                    ]
+                                  : []),
                                 {
                                   key: "delete",
                                   label: "Удалить",

@@ -9,6 +9,9 @@
   --color-surface-deep: #1c1c1c;
   --color-surface-dark: #171717;
   --color-surface-soft: #232323;
+  --surface-glass-bg: rgba(38, 38, 38, 0.72);
+  --surface-glass-filter: blur(16px) saturate(130%);
+  --surface-glass-bg-fallback: var(--color-border-subtle);
 
   /* Borders */
   --color-border: #383838;
