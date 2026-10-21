@@ -14,29 +14,65 @@ body:has(.auth-page) .toast-region {
   top: 12px;
 }
 
+.toast-item {
+  --toast-exit: 180ms;
+
+  display: grid;
+  grid-template-rows: 1fr;
+  margin-bottom: 0;
+  transition:
+    grid-template-rows var(--toast-exit) cubic-bezier(0.4, 0, 0.2, 1),
+    margin-bottom var(--toast-exit) cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.toast-item--closing {
+  grid-template-rows: 0fr;
+  margin-bottom: -8px;
+}
+
+.toast-item__inner {
+  min-height: 0;
+  margin: -8px;
+  padding: 8px;
+  overflow: hidden;
+}
+
 .toast {
-  --toast-color: #16a34a;
+  --toast-accent: #4ade80;
+  --toast-text: #fff;
+  --toast-blur: 16px;
+
+  position: relative;
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 12px 8px 14px;
-  border: 1px solid rgb(0 0 0 / 0.06);
-  border-radius: 12px;
-  background: #fff;
-  box-shadow:
-    0 1px 2px rgb(0 0 0 / 0.06),
-    0 8px 24px rgb(0 0 0 / 0.12);
-  color: var(--toast-color);
-  animation: toast-enter 200ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  padding: 10px 12px 10px 14px;
+  overflow: hidden;
+  isolation: isolate;
+
+  border-radius: 14px;
+
+  -webkit-backdrop-filter: blur(var(--toast-blur)) saturate(130%);
+  backdrop-filter: blur(var(--toast-blur)) saturate(130%);
+
+  color: var(--toast-text);
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.35);
+  animation: toast-enter 200ms cubic-bezier(0.22, 1.25, 0.36, 1) both;
   pointer-events: auto;
+  will-change: transform, opacity;
+}
+
+.toast-item--closing .toast {
+  animation: toast-exit var(--toast-exit, 180ms) cubic-bezier(0.4, 0, 1, 1) both;
+  pointer-events: none;
 }
 
 .toast--success {
-  --toast-color: #16a34a;
+  --toast-accent: #4ade80;
 }
 
 .toast--error {
-  --toast-color: #dc2626;
+  --toast-accent: #f87171;
 }
 
 .toast__icon {
@@ -51,26 +87,25 @@ body:has(.auth-page) .toast-region {
   color: transparent;
 }
 
-.toast__icon::before {
+.toast__icon img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  filter: brightness(0) invert(1);
+}
+
+.toast__icon:empty::before {
   content: "";
   position: absolute;
   inset: 0;
-  background: var(--toast-color);
+  background: var(--toast-accent);
   -webkit-mask: var(--toast-icon) center / contain no-repeat;
   mask: var(--toast-icon) center / contain no-repeat;
 }
 
-.toast--success .toast__icon {
-  --toast-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 18' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m3.5 9.5 3.5 3.5 7.5-8'/%3E%3C/svg%3E");
-}
-
-.toast--error .toast__icon {
-  --toast-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 18' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round'%3E%3Cpath d='m4.5 4.5 9 9m0-9-9 9'/%3E%3C/svg%3E");
-}
-
 .toast__message {
   flex: 1;
-  color: var(--toast-color);
+  color: inherit;
   font-size: 14px;
   font-weight: 500;
   line-height: 20px;
@@ -83,7 +118,7 @@ body:has(.auth-page) .toast-region {
   border: 0;
   border-radius: 6px;
   background: transparent;
-  color: #9ca3af;
+  color: rgb(255 255 255 / 0.65);
   font: inherit;
   font-size: 18px;
   line-height: 1;
@@ -93,19 +128,50 @@ body:has(.auth-page) .toast-region {
     background 120ms ease;
 }
 
+.toast__dismiss img {
+  display: block;
+  width: 18px;
+  height: 18px;
+  filter: brightness(0) invert(1);
+}
+
 .toast__dismiss:hover {
-  background: rgb(0 0 0 / 0.05);
-  color: #4b5563;
+  background: rgb(255 255 255 / 0.18);
+  color: #fff;
+}
+
+.toast__dismiss:focus-visible {
+  outline: 2px solid var(--toast-accent);
+  outline-offset: 1px;
+}
+
+@supports not (
+  (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))
+) {
+  .toast {
+    background: rgb(250 250 252 / 0.94);
+  }
 }
 
 @keyframes toast-enter {
   from {
     opacity: 0;
-    transform: translateY(-8px);
+    transform: translate3d(28px, -6px, 0) scale(0.94);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes toast-exit {
+  from {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translate3d(36px, 0, 0) scale(0.95);
   }
 }
 
@@ -118,7 +184,12 @@ body:has(.auth-page) .toast-region {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .toast {
+  .toast,
+  .toast-item--closing .toast {
     animation: none;
+  }
+
+  .toast-item {
+    transition: none;
   }
 }
