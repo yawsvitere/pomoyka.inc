@@ -138,7 +138,7 @@ function PostishkaOgPreview({
     let objectUrl: string | null = null;
 
     void apiClient
-      .get<Blob>(`/api/posts/og/${postId}.png`, { responseType: "blob" })
+      .get<Blob>(`/api/posts/og/${postId}.webp`, { responseType: "blob" })
       .then(({ data }) => {
         objectUrl = URL.createObjectURL(data);
         if (active) setImageUrl(objectUrl);

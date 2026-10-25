@@ -91,7 +91,7 @@ function renderArticleNode(node: Node, post: Post): ReactNode {
   if (element.hasAttribute("data-gallery-widget")) {
     const url = getSafeWebUrl(element.dataset.galleryUrl);
     if (!url) return null;
-    const imageUrl = getSafeWebUrl(element.dataset.galleryImage);
+    const imageUrl = getArticleGalleryImageUrl(element.dataset.galleryImage);
     const title = element.dataset.galleryTitle || element.dataset.gallerySite || url;
     const description = element.dataset.galleryDescription;
     const siteName = element.dataset.gallerySite;
@@ -192,6 +192,20 @@ function getSafeWebUrl(value: string | undefined) {
   } catch {
     return null;
   }
+}
+
+function getArticleGalleryImageUrl(value: string | undefined) {
+  const safeUrl = getSafeWebUrl(value);
+  if (!safeUrl) return null;
+
+  const url = new URL(safeUrl);
+  if (url.origin === window.location.origin) {
+    url.pathname = url.pathname.replace(
+      /^\/gallery-og\/([0-9a-f-]{36})\.png$/i,
+      "/gallery-og/$1.webp",
+    );
+  }
+  return url.href;
 }
 
 function ArticleContent({ post }: { post: Post }) {

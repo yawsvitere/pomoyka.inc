@@ -22,6 +22,9 @@ public interface IStorageService
         string contentType,
         ImagePreviewVariant variant);
     Task<string?> CreateVideoPreviewAsync(string sourceKey, string contentType);
+    Task<string> GetOrCreateAvatarVideoThumbnailAsync(
+        string sourceKey,
+        CancellationToken cancellationToken = default);
     Task<string> CreateAvatarVideoAsync(Stream content, int? cropX = null, int? cropY = null, int? cropWidth = null, int? cropHeight = null);
     Task<string> UploadDeduplicatedObjectAsync(Stream content, string contentType);
     string GetIconPreviewObjectKey(string objectKey);
@@ -181,7 +184,15 @@ public class StorageService : IStorageService
     public string GetVideoPreviewObjectKey(string objectKey) => $"previews/{objectKey}.mp4";
 
     public IEnumerable<string> GetVideoPreviewObjectKeys(string objectKey) =>
-        new[] { GetIconPreviewObjectKey(objectKey), GetVideoPreviewObjectKey(objectKey) };
+        new[]
+        {
+            GetIconPreviewObjectKey(objectKey),
+            GetVideoPreviewObjectKey(objectKey),
+            GetAvatarVideoThumbnailObjectKey(objectKey)
+        };
+
+    public string GetAvatarVideoThumbnailObjectKey(string objectKey) =>
+        $"previews/avatar-og/{objectKey}.webp";
 
     public async Task<ImagePreviewResult?> CreateImagePreviewAsync(
         string sourceKey,
@@ -315,6 +326,46 @@ public class StorageService : IStorageService
             }
 
             return previewKey;
+        }
+        finally
+        {
+            tempDirectory.Delete(true);
+        }
+    }
+
+    public async Task<string> GetOrCreateAvatarVideoThumbnailAsync(
+        string sourceKey,
+        CancellationToken cancellationToken = default)
+    {
+        var thumbnailKey = GetAvatarVideoThumbnailObjectKey(sourceKey);
+        try
+        {
+            await _s3.GetObjectMetadataAsync(_bucket, thumbnailKey, cancellationToken);
+            return thumbnailKey;
+        }
+        catch (AmazonS3Exception exception) when (
+            exception.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+        }
+
+        var tempDirectory = Directory.CreateTempSubdirectory("feed-avatar-thumbnail-");
+        try
+        {
+            var inputPath = Path.Combine(tempDirectory.FullName, "avatar.mp4");
+            var outputPath = Path.Combine(tempDirectory.FullName, "avatar.webp");
+            using (var source = await _s3.GetObjectAsync(_bucket, sourceKey, cancellationToken))
+            await using (var input = File.Create(inputPath))
+            {
+                await source.ResponseStream.CopyToAsync(input, cancellationToken);
+            }
+
+            await RunFfmpegAsync(outputPath,
+                "-y", "-i", inputPath, "-map", "0:v:0", "-frames:v", "1",
+                "-vf", "scale=192:192:force_original_aspect_ratio=increase,crop=192:192",
+                "-c:v", "libwebp", "-quality", "82", "-f", "webp", outputPath);
+            await using var thumbnail = File.OpenRead(outputPath);
+            await UploadObjectAsync(thumbnailKey, thumbnail, "image/webp");
+            return thumbnailKey;
         }
         finally
         {

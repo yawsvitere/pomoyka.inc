@@ -1,5 +1,8 @@
 using Amazon.S3;
 using Feed.Api.Data;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Formats.Webp;
+using SixLabors.ImageSharp.PixelFormats;
 using Microsoft.EntityFrameworkCore;
 using System.Net;
 
@@ -9,7 +12,11 @@ public sealed class OgImageStorageCache(IStorageService storage)
 {
     public static string PostKey(Guid postId) => $"og-cache/postishki/{postId}.png";
 
+    public static string PostWebpKey(Guid postId) => $"og-cache/postishki/{postId}.q90.webp";
+
     public static string GalleryKey(Guid folderId) => $"og-cache/galleries/{folderId}.png";
+
+    public static string GalleryWebpKey(Guid folderId) => $"og-cache/galleries/{folderId}.q90.webp";
 
     public async Task<byte[]?> TryGetAsync(string key, CancellationToken cancellationToken = default)
     {
@@ -33,9 +40,25 @@ public sealed class OgImageStorageCache(IStorageService storage)
     {
         await using var content = new MemoryStream(image, writable: false);
         await storage.UploadObjectAsync(key, content, "image/png");
+
+        using var decodedImage = Image.Load<Rgba32>(image);
+        await using var webpContent = new MemoryStream();
+        await decodedImage.SaveAsWebpAsync(
+            webpContent,
+            new WebpEncoder { Quality = 90 },
+            cancellationToken);
+        webpContent.Position = 0;
+        await storage.UploadObjectAsync(GetWebpKey(key), webpContent, "image/webp");
     }
 
-    public Task InvalidateAsync(string key) => storage.DeleteObjectAsync(key);
+    public async Task InvalidateAsync(string key)
+    {
+        var webpKey = GetWebpKey(key);
+        var previousWebpKey = key.EndsWith(".png", StringComparison.OrdinalIgnoreCase)
+            ? $"{key[..^4]}.webp"
+            : throw new ArgumentException("OG cache keys must use the .png extension.", nameof(key));
+        await storage.DeleteObjectsAsync(new[] { key, webpKey, previousWebpKey });
+    }
 
     public async Task InvalidateUserAsync(AppDbContext db, Guid userId)
     {
@@ -53,4 +76,9 @@ public sealed class OgImageStorageCache(IStorageService storage)
         foreach (var folderId in folderIds)
             await InvalidateAsync(GalleryKey(folderId));
     }
+
+    private static string GetWebpKey(string pngKey) =>
+        pngKey.EndsWith(".png", StringComparison.OrdinalIgnoreCase)
+            ? $"{pngKey[..^4]}.q90.webp"
+            : throw new ArgumentException("OG cache keys must use the .png extension.", nameof(pngKey));
 }

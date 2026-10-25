@@ -22,7 +22,6 @@ function openInNewTab(href: string) {
   window.open(href, "_blank", "noopener,noreferrer");
 }
 
-// Buttons avoid the native browser URL preview shown for links with an href.
 export function AppLink({
   to,
   className,

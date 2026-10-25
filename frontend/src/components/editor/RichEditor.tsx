@@ -987,7 +987,7 @@ function GalleryPicker({
       url: galleryUrl,
       title: `Коллекция «${folder.name}»`,
       description: `Фото из коллекции «${folder.name}» на Помойка.inc.`,
-      imageUrl: `${window.location.origin}/gallery-og/${folder.id}.png`,
+      imageUrl: `${window.location.origin}/gallery-og/${folder.id}.webp`,
       siteName: "Помойка.inc",
       galleryId: folder.id,
     });
@@ -1024,7 +1024,7 @@ function GalleryPicker({
           url: target.href,
           title: galleryTitle,
           description: `Фото из коллекции «${gallery.name}» на Помойка.inc.`,
-          imageUrl: `${window.location.origin}/gallery-og/${ownGallery[1]}.png`,
+          imageUrl: `${window.location.origin}/gallery-og/${ownGallery[1]}.webp`,
           siteName: "Помойка.inc",
           galleryId: ownGallery[1],
         });

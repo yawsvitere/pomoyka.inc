@@ -17,13 +17,6 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text.RegularExpressions;
 using System.Text;
-using System.Text.Encodings.Web;
-using SixLabors.Fonts;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Formats.Png;
-using SixLabors.ImageSharp.PixelFormats;
-using SixLabors.ImageSharp.Processing;
-using SixLabors.ImageSharp.Drawing.Processing;
 
 namespace Feed.Api.Controllers;
 
@@ -39,6 +32,7 @@ public class FilesController : ControllerBase
     private readonly IHubContext<FeedHub> _feedHub;
     private readonly ILogger<FilesController> _logger;
     private readonly OgImageStorageCache _ogImageCache;
+    private readonly OgImageGenerator _ogImageGenerator;
     private readonly AvatarImageOptimizer _avatarImageOptimizer;
     private readonly string _sevenZipExecutable;
 
@@ -58,6 +52,7 @@ public class FilesController : ControllerBase
         ILogger<FilesController> logger,
         IConfiguration configuration,
         OgImageStorageCache ogImageCache,
+        OgImageGenerator ogImageGenerator,
         AvatarImageOptimizer avatarImageOptimizer)
     {
         _db = db;
@@ -67,6 +62,7 @@ public class FilesController : ControllerBase
         _feedHub = feedHub;
         _logger = logger;
         _ogImageCache = ogImageCache;
+        _ogImageGenerator = ogImageGenerator;
         _avatarImageOptimizer = avatarImageOptimizer;
         _sevenZipExecutable = configuration["SevenZip:ExecutablePath"] ?? "7z";
     }
@@ -786,33 +782,14 @@ public class FilesController : ControllerBase
         var canonicalUrl = $"{origin}/files/gallery/{folder.Id}";
         var imageUrl = $"{origin}/gallery-og/{folder.Id}.png";
 
-        static string Encode(string value) => HtmlEncoder.Default.Encode(value);
-
-        var html = $"""
-            <!doctype html>
-            <html lang="ru">
-              <head>
-                <meta charset="UTF-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1">
-                <title>{Encode($"{title} — Помойка.inc")}</title>
-                <meta name="description" content="{Encode(description)}">
-                <meta property="og:site_name" content="Помойка.inc">
-                <meta property="og:type" content="website">
-                <meta property="og:title" content="{Encode($"{title} — Помойка.inc")}">
-                <meta property="og:description" content="{Encode(description)}">
-                <meta property="og:url" content="{Encode(canonicalUrl)}">
-                <meta property="og:image" content="{Encode(imageUrl)}">
-                <meta property="og:image:width" content="1200">
-                <meta property="og:image:height" content="630">
-                <meta name="twitter:card" content="summary_large_image">
-                <meta name="twitter:title" content="{Encode($"{title} — Помойка.inc")}">
-                <meta name="twitter:description" content="{Encode(description)}">
-                <meta name="twitter:image" content="{Encode(imageUrl)}">
-              </head>
-              <body><h1>{Encode(title)}</h1><p>{Encode(description)}</p></body>
-            </html>
-            """;
-
+        var pageTitle = $"{title} — Помойка.inc";
+        var html = OgImageGenerator.CreateMetadataHtml(
+            pageTitle,
+            title,
+            description,
+            canonicalUrl,
+            imageUrl,
+            "website");
         return Content(html, "text/html; charset=utf-8");
     }
 
@@ -961,168 +938,58 @@ public class FilesController : ControllerBase
 
     [AllowAnonymous]
     [HttpGet("gallery/og/{folderId:guid}.png")]
-    public async Task<IActionResult> GetGalleryOgImage(Guid folderId)
+    public Task<IActionResult> GetGalleryOgImage(Guid folderId) =>
+        GetGalleryOgImageAsync(folderId, useWebp: false);
+
+    [AllowAnonymous]
+    [HttpGet("gallery/og/{folderId:guid}.webp")]
+    public Task<IActionResult> GetGalleryOgImageWebp(Guid folderId) =>
+        GetGalleryOgImageAsync(folderId, useWebp: true);
+
+    private async Task<IActionResult> GetGalleryOgImageAsync(Guid folderId, bool useWebp)
     {
+        const string cacheControl = "public, max-age=3600";
         var isPublicGallery = await _db.FileFolders.AsNoTracking()
             .AnyAsync(x => x.Id == folderId && x.AccessLevel == FileAccessLevel.Public);
         if (!isPublicGallery)
             return NotFound();
 
         var cacheKey = OgImageStorageCache.GalleryKey(folderId);
-        var cachedImage = await _ogImageCache.TryGetAsync(cacheKey, HttpContext.RequestAborted);
+        var responseKey = useWebp ? OgImageStorageCache.GalleryWebpKey(folderId) : cacheKey;
+        var cachedImage = await _ogImageCache.TryGetAsync(responseKey, HttpContext.RequestAborted);
         if (cachedImage != null)
         {
-            Response.Headers.CacheControl = "no-cache";
-            return File(cachedImage, "image/png");
+            Response.Headers.CacheControl = cacheControl;
+            return File(cachedImage, useWebp ? "image/webp" : "image/png");
         }
 
-        var folder = await _db.FileFolders.AsNoTracking()
-            .Include(x => x.Files)
-            .Include(x => x.Owner)
-            .FirstOrDefaultAsync(x => x.Id == folderId && x.AccessLevel == FileAccessLevel.Public);
-        if (folder == null)
-            return NotFound();
-
-        const int width = 1200;
-        const int height = 630;
-        const int left = 58;
-
-        var fontsPath = Path.Combine(AppContext.BaseDirectory, "Assets", "Fonts");
-        var boldFontPath = Path.Combine(fontsPath, "Geist-Bold.ttf");
-        if (!System.IO.File.Exists(boldFontPath))
-            throw new InvalidOperationException(
-                $"OG font is missing. Add Geist-Bold.ttf to {fontsPath}.");
-        var brandIconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "logo", "icon.png");
-        if (!System.IO.File.Exists(brandIconPath))
-            throw new InvalidOperationException(
-                $"OG logo is missing. Add icon.png to {Path.GetDirectoryName(brandIconPath)}.");
-
-        var fonts = new FontCollection();
-        var boldFamily = fonts.Add(boldFontPath);
-        var labelFont = boldFamily.CreateFont(27, FontStyle.Bold);
-        var titleFont = boldFamily.CreateFont(58, FontStyle.Bold);
-        var brandFont = boldFamily.CreateFont(30, FontStyle.Bold);
-        var brandMarkFont = boldFamily.CreateFont(18, FontStyle.Bold);
-        using var brandIcon = await Image.LoadAsync<Rgba32>(brandIconPath);
-        brandIcon.Mutate(context => context.Resize(new Size(56, 56)));
-
-        using var canvas = new Image<Rgba32>(width, height);
-        canvas.Mutate(context => context.Fill(Color.FromRgb(24, 24, 24)));
-
-        var files = folder.Files
-            .Where(file =>
-                file.AccessLevel == FileAccessLevel.Public &&
-                file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
-            .ToArray();
-        Random.Shared.Shuffle(files);
-        Array.Resize(ref files, Math.Min(files.Length, 9));
-
-        // Плитки сначала склеиваются на ровной плоской "стене" (сетка 3x3 без зазоров),
-        // а потом вся стена целиком проецируется в перспективу одним преобразованием.
-        const int columns = 3;
-        const int rows = 3;
-        const int slots = columns * rows;
-        const int tileWidth = 320;
-        const int tileHeight = 260;
-        const int tileGap = 0;
-        const int planeWidth = columns * tileWidth + (columns - 1) * tileGap;
-        const int planeHeight = rows * tileHeight + (rows - 1) * tileGap;
-
-        using var plane = new Image<Rgba32>(planeWidth, planeHeight);
-
-        var tiles = new List<Image<Rgba32>>();
-        try
+        var imageBytes = await _ogImageCache.TryGetAsync(cacheKey, HttpContext.RequestAborted);
+        if (imageBytes == null)
         {
-            foreach (var file in files)
-            {
-                var image = await TryLoadGalleryImageAsync(
-                    _storage.GetFeedPreviewObjectKey(file.StorageKey),
-                    HttpContext.RequestAborted)
-                    ?? await TryLoadGalleryImageAsync(file.StorageKey, HttpContext.RequestAborted);
-                if (image == null)
-                    continue;
+            var folder = await _db.FileFolders.AsNoTracking()
+                .Include(x => x.Files)
+                .Include(x => x.Owner)
+                .FirstOrDefaultAsync(x => x.Id == folderId && x.AccessLevel == FileAccessLevel.Public);
+            if (folder == null)
+                return NotFound();
 
-                tiles.Add(image);
-                image.Mutate(context => context.Resize(new ResizeOptions
-                {
-                    Size = new Size(tileWidth, tileHeight),
-                    Mode = ResizeMode.Crop,
-                    Position = AnchorPositionMode.Center
-                }));
-            }
-
-            if (tiles.Count > 0)
-            {
-                for (var slot = 0; slot < slots; slot++)
-                {
-                    var x = slot % columns * (tileWidth + tileGap);
-                    var y = slot / columns * (tileHeight + tileGap);
-                    var tile = tiles[slot % tiles.Count];
-                    plane.Mutate(context => context.DrawImage(tile, new Point(x, y), 1f));
-                }
-            }
+            imageBytes = await _ogImageGenerator.GenerateGalleryAsync(folder, HttpContext.RequestAborted);
+            await _ogImageCache.StoreAsync(cacheKey, imageBytes, HttpContext.RequestAborted);
         }
-        finally
+        else if (useWebp)
         {
-            foreach (var tile in tiles)
-                tile.Dispose();
+            await _ogImageCache.StoreAsync(cacheKey, imageBytes, HttpContext.RequestAborted);
         }
 
-        var quad = ProjectGalleryPlane(
-            planeWidth, planeHeight,
-            yawDegrees: -35f, pitchDegrees: -15f,
-            distance: 1900f, focalLength: 2250f, scale: 1.3f,
-            centerX: 720f, centerY: 270f);
-        DrawGalleryPlane(canvas, plane, quad);
-
-        ApplyGalleryOgOverlay(canvas);
-        var titleLines = WrapGalleryTitle(folder.Name.Trim(), titleFont, width - left * 2);
-        canvas.Mutate(context =>
+        if (useWebp)
         {
-            DrawGalleryOgBrand(context, width, brandIcon, brandFont, brandMarkFont);
-            for (var index = 0; index < titleLines.Count; index++)
-                context.DrawText(titleLines[index], titleFont, Color.White,
-                    new PointF(left, 492 + index * 66));
-        });
-
-        var ownerName = folder.Owner?.DisplayName ?? "Помойка.inc";
-        var ownerNameColor = TryParseGalleryNicknameColor(folder.Owner?.NicknameColor);
-        const int ownerAvatarSize = 48;
-        var ownerAvatarKey = GetGalleryAvatarStorageKey(folder.Owner?.AvatarUrl);
-        if (ownerAvatarKey != null)
-        {
-            using var ownerAvatar = await TryLoadGalleryImageAsync(
-                ownerAvatarKey,
-                HttpContext.RequestAborted);
-            if (ownerAvatar != null)
-            {
-                ownerAvatar.Mutate(context => context.Resize(new ResizeOptions
-                {
-                    Size = new Size(ownerAvatarSize, ownerAvatarSize),
-                    Mode = ResizeMode.Crop,
-                    Position = AnchorPositionMode.Center
-                }));
-                MakeGalleryAvatarCircular(ownerAvatar);
-                canvas.Mutate(context => context.DrawImage(
-                    ownerAvatar,
-                    new Point(left, 32),
-                    1f));
-            }
+            var webpBytes = await _ogImageCache.TryGetAsync(responseKey, HttpContext.RequestAborted)
+                ?? throw new InvalidOperationException("Gallery OG WebP cache was not created.");
+            Response.Headers.CacheControl = cacheControl;
+            return File(webpBytes, "image/webp");
         }
 
-        var ownerNameBounds = TextMeasurer.MeasureBounds(ownerName, new TextOptions(labelFont));
-        var ownerNameY = 32 + (ownerAvatarSize - ownerNameBounds.Height) / 2 - ownerNameBounds.Y;
-        canvas.Mutate(context => context.DrawText(
-            ownerName,
-            labelFont,
-            ownerNameColor,
-            new PointF(left + ownerAvatarSize + 14, ownerNameY)));
-
-        var stream = new MemoryStream();
-        await canvas.SaveAsync(stream, new PngEncoder(), HttpContext.RequestAborted);
-        var imageBytes = stream.ToArray();
-        await _ogImageCache.StoreAsync(cacheKey, imageBytes);
-        Response.Headers.CacheControl = "no-cache";
+        Response.Headers.CacheControl = cacheControl;
         return File(imageBytes, "image/png");
     }
 
@@ -1829,336 +1696,6 @@ public class FilesController : ControllerBase
             .Replace('\n', ' ')
             .Trim();
         return clean.Length <= maxLength ? clean : clean[..maxLength];
-    }
-
-    private async Task<Image<Rgba32>?> TryLoadGalleryImageAsync(
-        string storageKey,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            using var response = await _storage.GetObjectAsync(storageKey);
-            return await Image.LoadAsync<Rgba32>(response.ResponseStream, cancellationToken);
-        }
-        catch (AmazonS3Exception exception)
-        {
-            _logger.LogWarning(exception, "Could not load gallery OG image asset {StorageKey}", storageKey);
-            return null;
-        }
-        catch (UnknownImageFormatException exception)
-        {
-            _logger.LogWarning(exception, "Gallery OG image asset {StorageKey} has an unsupported image format", storageKey);
-            return null;
-        }
-    }
-
-    private static string? GetGalleryAvatarStorageKey(string? avatarUrl)
-    {
-        if (string.IsNullOrWhiteSpace(avatarUrl) ||
-            avatarUrl.StartsWith(AvatarVideoPrefix, StringComparison.Ordinal))
-            return null;
-
-        return avatarUrl;
-    }
-
-    private static Color TryParseGalleryNicknameColor(string? color)
-    {
-        if (!string.IsNullOrWhiteSpace(color) &&
-            color[0] == '#' &&
-            color.Length is 4 or 7 &&
-            color[1..].All(Uri.IsHexDigit) &&
-            Color.TryParseHex(color, out var parsedColor))
-            return parsedColor;
-
-        return Color.FromRgb(139, 92, 246);
-    }
-
-    private static void MakeGalleryAvatarCircular(Image<Rgba32> image)
-    {
-        var center = (image.Width - 1) / 2f;
-        var radiusSquared = center * center;
-        for (var y = 0; y < image.Height; y++)
-        {
-            for (var x = 0; x < image.Width; x++)
-            {
-                var deltaX = x - center;
-                var deltaY = y - center;
-                if (deltaX * deltaX + deltaY * deltaY > radiusSquared)
-                    image[x, y] = new Rgba32(0, 0, 0, 0);
-            }
-        }
-    }
-
-    private static List<string> WrapGalleryTitle(string title, Font font, float maxWidth)
-    {
-        float Measure(string text) => TextMeasurer.MeasureAdvance(text, new TextOptions(font)).Width;
-
-        var lines = new List<string>();
-        var current = string.Empty;
-        var truncated = false;
-        foreach (var word in title.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries))
-        {
-            var candidate = current.Length == 0 ? word : $"{current} {word}";
-            if (Measure(candidate) <= maxWidth)
-            {
-                current = candidate;
-                continue;
-            }
-
-            if (current.Length > 0)
-                lines.Add(current);
-            if (lines.Count == 2)
-            {
-                truncated = true;
-                break;
-            }
-            current = word;
-        }
-
-        if (current.Length > 0 && lines.Count < 2)
-            lines.Add(current);
-        else if (current.Length > 0)
-            truncated = true;
-        if (lines.Count == 0)
-            return new List<string> { "Без названия" };
-
-        if (truncated || Measure(lines[^1]) > maxWidth)
-        {
-            var last = lines[^1];
-            while (last.Length > 1 && Measure(last + "…") > maxWidth)
-                last = last[..^1];
-            lines[^1] = last.TrimEnd() + "…";
-        }
-
-        return lines;
-    }
-
-    private static PointF[] ProjectGalleryPlane(
-        int planeWidth, int planeHeight,
-        float yawDegrees, float pitchDegrees,
-        float distance, float focalLength, float scale,
-        float centerX, float centerY)
-    {
-        var yaw = yawDegrees * MathF.PI / 180f;
-        var pitch = pitchDegrees * MathF.PI / 180f;
-        var cosYaw = MathF.Cos(yaw);
-        var sinYaw = MathF.Sin(yaw);
-        var cosPitch = MathF.Cos(pitch);
-        var sinPitch = MathF.Sin(pitch);
-
-        PointF Project(float u, float v)
-        {
-            var x = (u - planeWidth / 2f) * scale;
-            var y = (v - planeHeight / 2f) * scale;
-
-            var rx = x * cosYaw;
-            var rz = -x * sinYaw;
-            var ry = y * cosPitch - rz * sinPitch;
-            rz = y * sinPitch + rz * cosPitch;
-            rz += distance;
-
-            return new PointF(
-                centerX + focalLength * rx / rz,
-                centerY + focalLength * ry / rz);
-        }
-
-        return new[]
-        {
-            Project(0, 0),
-            Project(planeWidth, 0),
-            Project(planeWidth, planeHeight),
-            Project(0, planeHeight)
-        };
-    }
-
-    private static double[] SolveHomography(PointF[] destination, PointF[] source)
-    {
-        var m = new double[8, 9];
-        for (var i = 0; i < 4; i++)
-        {
-            double x = destination[i].X, y = destination[i].Y;
-            double u = source[i].X, v = source[i].Y;
-            var r0 = i * 2;
-            var r1 = r0 + 1;
-
-            m[r0, 0] = x; m[r0, 1] = y; m[r0, 2] = 1;
-            m[r0, 6] = -u * x; m[r0, 7] = -u * y; m[r0, 8] = u;
-
-            m[r1, 3] = x; m[r1, 4] = y; m[r1, 5] = 1;
-            m[r1, 6] = -v * x; m[r1, 7] = -v * y; m[r1, 8] = v;
-        }
-
-        for (var col = 0; col < 8; col++)
-        {
-            var pivot = col;
-            for (var r = col + 1; r < 8; r++)
-                if (Math.Abs(m[r, col]) > Math.Abs(m[pivot, col]))
-                    pivot = r;
-
-            if (pivot != col)
-                for (var c = 0; c < 9; c++)
-                    (m[col, c], m[pivot, c]) = (m[pivot, c], m[col, c]);
-
-            var divisor = m[col, col];
-            for (var c = col; c < 9; c++)
-                m[col, c] /= divisor;
-
-            for (var r = 0; r < 8; r++)
-            {
-                if (r == col) continue;
-                var factor = m[r, col];
-                if (factor == 0) continue;
-                for (var c = col; c < 9; c++)
-                    m[r, c] -= factor * m[col, c];
-            }
-        }
-
-        var h = new double[9];
-        for (var i = 0; i < 8; i++)
-            h[i] = m[i, 8];
-        h[8] = 1;
-        return h;
-    }
-
-    private static void DrawGalleryPlane(Image<Rgba32> canvas, Image<Rgba32> plane, PointF[] quad)
-    {
-        var pw = plane.Width;
-        var ph = plane.Height;
-        var h = SolveHomography(quad, new[]
-        {
-            new PointF(0, 0), new PointF(pw, 0), new PointF(pw, ph), new PointF(0, ph)
-        });
-
-        var pixels = new Rgba32[pw * ph];
-        plane.CopyPixelDataTo(pixels);
-
-        var minX = Math.Max(0, (int)Math.Floor(quad.Min(point => point.X)));
-        var maxX = Math.Min(canvas.Width - 1, (int)Math.Ceiling(quad.Max(point => point.X)));
-        var minY = Math.Max(0, (int)Math.Floor(quad.Min(point => point.Y)));
-        var maxY = Math.Min(canvas.Height - 1, (int)Math.Ceiling(quad.Max(point => point.Y)));
-        if (minX > maxX || minY > maxY)
-            return;
-
-        const int samples = 2;
-        const float invSamples = 1f / (samples * samples);
-
-
-        (float r, float g, float b, float a) Fetch(int x, int y)
-        {
-            if (x < 0 || y < 0 || x >= pw || y >= ph)
-                return (0f, 0f, 0f, 0f);
-            var p = pixels[y * pw + x];
-            var a = p.A / 255f;
-            return (p.R / 255f * a, p.G / 255f * a, p.B / 255f * a, a);
-        }
-
-        canvas.ProcessPixelRows(accessor =>
-        {
-            for (var y = minY; y <= maxY; y++)
-            {
-                var row = accessor.GetRowSpan(y);
-                for (var x = minX; x <= maxX; x++)
-                {
-                    float sr = 0f, sg = 0f, sb = 0f, sa = 0f;
-                    for (var sy = 0; sy < samples; sy++)
-                    {
-                        for (var sx = 0; sx < samples; sx++)
-                        {
-                            var px = x + (sx + 0.5) / samples;
-                            var py = y + (sy + 0.5) / samples;
-                            var w = h[6] * px + h[7] * py + h[8];
-                            if (w <= 0)
-                                continue;
-                            var u = (h[0] * px + h[1] * py + h[2]) / w - 0.5;
-                            var v = (h[3] * px + h[4] * py + h[5]) / w - 0.5;
-                            if (u < -1 || v < -1 || u > pw || v > ph)
-                                continue;
-
-                            var x0 = (int)Math.Floor(u);
-                            var y0 = (int)Math.Floor(v);
-                            var fx = (float)(u - x0);
-                            var fy = (float)(v - y0);
-
-                            var c00 = Fetch(x0, y0);
-                            var c10 = Fetch(x0 + 1, y0);
-                            var c01 = Fetch(x0, y0 + 1);
-                            var c11 = Fetch(x0 + 1, y0 + 1);
-                            var w00 = (1 - fx) * (1 - fy);
-                            var w10 = fx * (1 - fy);
-                            var w01 = (1 - fx) * fy;
-                            var w11 = fx * fy;
-
-                            sr += c00.r * w00 + c10.r * w10 + c01.r * w01 + c11.r * w11;
-                            sg += c00.g * w00 + c10.g * w10 + c01.g * w01 + c11.g * w11;
-                            sb += c00.b * w00 + c10.b * w10 + c01.b * w01 + c11.b * w11;
-                            sa += c00.a * w00 + c10.a * w10 + c01.a * w01 + c11.a * w11;
-                        }
-                    }
-
-                    sr *= invSamples; sg *= invSamples; sb *= invSamples; sa *= invSamples;
-                    if (sa <= 0f)
-                        continue;
-
-                    var dst = row[x];
-                    var inv = 1f - sa;
-                    row[x] = new Rgba32(
-                        (byte)Math.Clamp(sr * 255f + dst.R * inv + 0.5f, 0f, 255f),
-                        (byte)Math.Clamp(sg * 255f + dst.G * inv + 0.5f, 0f, 255f),
-                        (byte)Math.Clamp(sb * 255f + dst.B * inv + 0.5f, 0f, 255f),
-                        255);
-                }
-            }
-        });
-    }
-
-    private static void ApplyGalleryOgOverlay(Image<Rgba32> image)
-    {
-        image.ProcessPixelRows(accessor =>
-        {
-            for (var y = 0; y < image.Height; y++)
-            {
-                var row = accessor.GetRowSpan(y);
-                var lowerGradient = Math.Clamp((y - image.Height * 0.42f) / (image.Height * 0.58f), 0f, 1f);
-                var darkness = 0.30f + 0.62f * lowerGradient;
-                var opacity = 1f - darkness;
-                for (var x = 0; x < image.Width; x++)
-                {
-                    var pixel = row[x];
-                    row[x] = new Rgba32(
-                        (byte)(pixel.R * opacity),
-                        (byte)(pixel.G * opacity),
-                        (byte)(pixel.B * opacity),
-                        pixel.A);
-                }
-            }
-        });
-    }
-
-    private static void DrawGalleryOgBrand(
-        IImageProcessingContext context,
-        int canvasWidth,
-        Image<Rgba32> icon,
-        Font brandFont,
-        Font markFont)
-    {
-        const int iconSize = 56;
-        const int gap = 14;
-        const int rightPadding = 40;
-        const int top = 32;
-
-        const string brandName = "помойка.inc";
-        var brandWidth = TextMeasurer.MeasureAdvance(brandName, new TextOptions(brandFont)).Width;
-        var markWidth = TextMeasurer.MeasureAdvance("®", new TextOptions(markFont)).Width;
-        var contentWidth = iconSize + gap + brandWidth + 2 + markWidth;
-        var iconX = canvasWidth - rightPadding - (int)Math.Ceiling(contentWidth);
-        var iconY = top;
-        var textX = iconX + iconSize + gap;
-        var textY = iconY + (iconSize - brandFont.Size) / 2;
-
-        context.DrawImage(icon, new Point(iconX, iconY), 1f);
-        context.DrawText(brandName, brandFont, Color.White, new PointF(textX, textY));
-        context.DrawText("®", markFont, Color.White,
-            new PointF(textX + brandWidth + 2, textY - markFont.Size / 3));
     }
 
     private static string BuildLibraryStorageKey(Guid userId, Guid? folderId, string fileName) =>
