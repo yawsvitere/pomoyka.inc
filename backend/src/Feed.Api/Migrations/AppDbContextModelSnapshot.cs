@@ -591,6 +591,12 @@ namespace Feed.Api.Migrations
                         .HasColumnType("integer")
                         .HasDefaultValue(1);
 
+                    b.Property<string>("AttachmentsJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("text")
+                        .HasDefaultValue("[]");
+
                     b.Property<Guid>("AuthorId")
                         .HasColumnType("uuid");
 

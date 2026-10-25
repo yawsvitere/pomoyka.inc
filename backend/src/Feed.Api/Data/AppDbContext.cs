@@ -102,6 +102,9 @@ public class AppDbContext : IdentityDbContext<AppUser, IdentityRole<Guid>, Guid>
                 .OnDelete(DeleteBehavior.Cascade);
 
             e.Property(p => p.Text).HasColumnType("text");
+            e.Property(p => p.AttachmentsJson)
+                .HasColumnType("text")
+                .HasDefaultValue("[]");
             e.Property(p => p.Title).HasMaxLength(200);
             e.Property(p => p.Description).HasMaxLength(500);
             e.Property(p => p.Slug).HasMaxLength(220);

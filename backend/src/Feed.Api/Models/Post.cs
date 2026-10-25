@@ -10,6 +10,7 @@ public class Post
     public AppUser? Author { get; set; }
 
     public string? Text { get; set; }
+    public string AttachmentsJson { get; set; } = "[]";
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public bool IsPostishka { get; set; }
     public string? Slug { get; set; }

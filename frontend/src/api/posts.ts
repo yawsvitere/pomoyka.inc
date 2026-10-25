@@ -4,6 +4,7 @@ import type {
   FeedBanner,
   FeedPoll,
   Post,
+  CreatePostAttachment,
   PostFile,
   PostReaction,
 } from "./types";
@@ -48,8 +49,14 @@ export async function getPostishki(page = 1, pageSize = 20) {
   return data;
 }
 
-export async function createPost(text: string) {
-  const { data } = await apiClient.post<Post>("/api/posts", { text });
+export async function createPost(
+  text: string,
+  attachments: CreatePostAttachment[] = [],
+) {
+  const { data } = await apiClient.post<Post>("/api/posts", {
+    text,
+    attachments,
+  });
   return data;
 }
 
@@ -142,6 +149,13 @@ export async function updateArticle(
 
 export async function getPostishkaCover(id: string) {
   const { data } = await apiClient.get<Blob>(`/api/posts/${id}/cover`, {
+    responseType: "blob",
+  });
+  return data;
+}
+
+export async function getPostishkaOgImage(id: string) {
+  const { data } = await apiClient.get<Blob>(`/api/posts/og/${id}.webp`, {
     responseType: "blob",
   });
   return data;

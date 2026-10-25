@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Claims;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -377,13 +378,28 @@ public class PostsController : ControllerBase
             });
         }
 
+        if (request.Attachments == null)
+            return BadRequest(new { message = "Список вложений имеет неверный формат" });
+        if (request.Attachments.Count > 12)
+            return BadRequest(new { message = "Можно прикрепить не больше 12 элементов" });
+
+        var attachments = new List<PostAttachmentDto>(request.Attachments.Count);
+        foreach (var attachmentRequest in request.Attachments)
+        {
+            var attachment = await ResolveAttachmentAsync(attachmentRequest);
+            if (attachment == null)
+                return BadRequest(new { message = "Одно из вложений недоступно или не найдено" });
+            attachments.Add(attachment);
+        }
+
         var pomoyka = await _pomoykaService.GetOrCreateTodaysPomoykaAsync();
 
         var post = new Post
         {
             PomoykaId = pomoyka.Id,
             AuthorId = userId.Value,
-            Text = request.Text
+            Text = request.Text,
+            AttachmentsJson = JsonSerializer.Serialize(attachments)
         };
 
         _db.Posts.Add(post);
@@ -412,6 +428,125 @@ public class PostsController : ControllerBase
             .SendAsync("NewPost", dto);
 
         return Ok(dto);
+    }
+
+    private async Task<PostAttachmentDto?> ResolveAttachmentAsync(
+        CreatePostAttachmentRequest request)
+    {
+        switch (request.Type)
+        {
+            case "post" when Guid.TryParse(request.Id, out var postId):
+            {
+                var post = await _db.Posts.AsNoTracking()
+                    .FirstOrDefaultAsync(x => x.Id == postId && x.IsPostishka);
+                if (post == null) return null;
+                var title = string.IsNullOrWhiteSpace(post.Title)
+                    ? post.Text?.Split('\n').FirstOrDefault()
+                    : post.Title;
+                return new PostAttachmentDto
+                {
+                    Id = post.Id.ToString(),
+                    Type = "post",
+                    Title = string.IsNullOrWhiteSpace(title) ? "Постишка" : title,
+                    Subtitle = "Постишка",
+                    Href = $"/posts/{Uri.EscapeDataString(post.Slug ?? post.Id.ToString())}"
+                };
+            }
+            case "user" when Guid.TryParse(request.Id, out var userId):
+            {
+                var user = await _db.Users.AsNoTracking()
+                    .FirstOrDefaultAsync(x => x.Id == userId);
+                if (user == null) return null;
+                return new PostAttachmentDto
+                {
+                    Id = user.Id.ToString(),
+                    Type = "user",
+                    Title = user.DisplayName,
+                    Subtitle = "Пользователь",
+                    Href = $"/profile/{Uri.EscapeDataString(user.DisplayName)}",
+                    ImageUrl = user.AvatarUrl == null
+                        ? null
+                        : $"/api/files/avatar/{user.Id}?v={Uri.EscapeDataString(user.AvatarUrl)}"
+                };
+            }
+            case "date":
+            {
+                if (!DateOnly.TryParseExact(
+                        request.Id,
+                        "yyyy-MM-dd",
+                        CultureInfo.InvariantCulture,
+                        DateTimeStyles.None,
+                        out var date))
+                    return null;
+                var archiveExists = await _db.ArchiveDays.AsNoTracking()
+                    .AnyAsync(x => x.Date == date);
+                if (!archiveExists) return null;
+                var formattedDate = date.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture);
+                return new PostAttachmentDto
+                {
+                    Id = date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                    Type = "date",
+                    Title = formattedDate,
+                    Subtitle = "День в архиве",
+                    Href = $"/archive/{date:yyyy/MM/dd}"
+                };
+            }
+            case "file" when Guid.TryParse(request.Id, out var fileId):
+                return await ResolveFileAttachmentAsync(fileId, request.FileKind);
+            default:
+                return null;
+        }
+    }
+
+    private async Task<PostAttachmentDto?> ResolveFileAttachmentAsync(
+        Guid fileId,
+        string? fileKind)
+    {
+        if (fileKind == "user")
+        {
+            var file = await _db.UserFiles.AsNoTracking()
+                .FirstOrDefaultAsync(x => x.Id == fileId);
+            if (file == null || file.AccessLevel == FileAccessLevel.Private)
+                return null;
+
+            var isImage = file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase);
+            return new PostAttachmentDto
+            {
+                Id = file.Id.ToString(),
+                Type = "file",
+                Title = file.FileName,
+                Subtitle = "Файл из библиотеки",
+                Href = $"/files/file/{file.Id}",
+                ImageUrl = isImage
+                    ? _storage.GetPublicObjectUrl(_storage.GetIconPreviewObjectKey(file.StorageKey))
+                    : null,
+                FileKind = fileKind
+            };
+        }
+
+        if (fileKind == "post")
+        {
+            var file = await _db.PostFiles.AsNoTracking()
+                .Include(x => x.Post)
+                .FirstOrDefaultAsync(x => x.Id == fileId);
+            if (file?.Post == null) return null;
+
+            var isImage = file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase);
+            return new PostAttachmentDto
+            {
+                Id = file.Id.ToString(),
+                Type = "file",
+                Title = file.FileName,
+                Subtitle = "Файл из поста",
+                Href = $"/posts/{Uri.EscapeDataString(file.Post.Slug ?? file.Post.Id.ToString())}",
+                ImageUrl = isImage
+                    ? _storage.GetPublicObjectUrl(_storage.GetFeedPreviewObjectKey(file.StorageKey))
+                    : null,
+                FileKind = fileKind
+            };
+        }
+
+        return null;
     }
 
     [HttpDelete("{id:guid}")]
@@ -665,6 +800,8 @@ public class PostsController : ControllerBase
             AccessLevel = post.AccessLevel,
             RelatedPostId = post.RelatedPostId,
             CreatedAt = post.CreatedAt,
+            Attachments = JsonSerializer.Deserialize<List<PostAttachmentDto>>(
+                post.AttachmentsJson) ?? new(),
 
             Blocks = post.Blocks.OrderBy(b => b.SortOrder).Select(b => new PostBlockDto
             {

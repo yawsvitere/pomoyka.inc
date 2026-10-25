@@ -22,8 +22,12 @@ import { AvatarMedia } from "../ui/AvatarMedia";
 import { MediaModal } from "../ui/MediaModal";
 import { AppExternalLink, AppLink } from "../ui/AppLink";
 import { getPostishkaUrl } from "../../utils/postishkaUrl";
-export type PostCardData = Omit<Post, "reactionCounts" | "reactions"> &
-  Partial<Pick<Post, "reactionCounts" | "reactions">>;
+import { PostAttachments } from "../common/AttachmentPicker";
+export type PostCardData = Omit<
+  Post,
+  "reactionCounts" | "reactions" | "attachments"
+> &
+  Partial<Pick<Post, "reactionCounts" | "reactions" | "attachments">>;
 interface PostCardProps {
   post: PostCardData;
   showAuthor?: boolean;
@@ -1128,6 +1132,9 @@ export function PostCard({
                 postId={post.relatedPostId}
                 href={postishkaHref}
               />
+            )}
+            {post.attachments && post.attachments.length > 0 && (
+              <PostAttachments attachments={post.attachments} />
             )}
             {reactionChips ? (
               <div className="post-reactions-footer">

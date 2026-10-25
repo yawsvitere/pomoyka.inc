@@ -6,6 +6,31 @@ public class CreatePostRequest
 {
     [MaxLength(4000)]
     public string? Text { get; set; } = string.Empty;
+
+    public List<CreatePostAttachmentRequest> Attachments { get; set; } = new();
+}
+
+public class CreatePostAttachmentRequest
+{
+    [Required, MaxLength(20)]
+    public string Type { get; set; } = string.Empty;
+
+    [Required, MaxLength(100)]
+    public string Id { get; set; } = string.Empty;
+
+    [MaxLength(20)]
+    public string? FileKind { get; set; }
+}
+
+public class PostAttachmentDto
+{
+    public string Id { get; set; } = string.Empty;
+    public string Type { get; set; } = string.Empty;
+    public string Title { get; set; } = string.Empty;
+    public string? Subtitle { get; set; }
+    public string Href { get; set; } = string.Empty;
+    public string? ImageUrl { get; set; }
+    public string? FileKind { get; set; }
 }
 
 public class PostDto
@@ -21,6 +46,7 @@ public class PostDto
         public PostAccessLevel AccessLevel { get; set; }
         public Guid? RelatedPostId { get; set; }
         public List<PostBlockDto> Blocks { get; set; } = new();
+        public List<PostAttachmentDto> Attachments { get; set; } = new();
     public DateTime CreatedAt { get; set; }
     public UserDto Author { get; set; } = null!;
     public List<PostFileDto> Files { get; set; } = new();

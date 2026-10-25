@@ -7,9 +7,18 @@ import {
 } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { AppLink } from "../ui/AppLink";
+import type { PostAttachment } from "../../api/types";
+import {
+  AttachmentPicker,
+  AttachmentSelection,
+} from "../common/AttachmentPicker";
 
 interface FeedComposerProps {
-  onSubmit: (text: string, files: File[]) => Promise<void>;
+  onSubmit: (
+    text: string,
+    files: File[],
+    attachments: PostAttachment[],
+  ) => Promise<void>;
   onError: (message: string) => void;
   children: React.ReactNode;
 }
@@ -17,6 +26,7 @@ interface FeedComposerProps {
 interface StoredFeedDraft {
   key: string;
   text: string;
+  attachments?: PostAttachment[];
   files: Array<{
     name: string;
     type: string;
@@ -99,9 +109,14 @@ async function deleteFeedDraft(key: string) {
   });
 }
 
-function queueFeedDraftWrite(draftKey: string, text: string, files: File[]) {
+function queueFeedDraftWrite(
+  draftKey: string,
+  text: string,
+  files: File[],
+  attachments: PostAttachment[],
+) {
   const write = feedDraftWriteQueue.then(async () => {
-    if (!text && files.length === 0) {
+    if (!text && files.length === 0 && attachments.length === 0) {
       await deleteFeedDraft(draftKey);
       return;
     }
@@ -109,6 +124,7 @@ function queueFeedDraftWrite(draftKey: string, text: string, files: File[]) {
     await writeFeedDraft({
       key: draftKey,
       text,
+      attachments,
       files: files.map((file) => ({
         name: file.name,
         type: file.type,
@@ -196,6 +212,9 @@ export function FeedComposer({
   const draftKey = user ? `feed-composer:${user.id}` : null;
   const [text, setText] = useState("");
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [selectedAttachments, setSelectedAttachments] = useState<
+    PostAttachment[]
+  >([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDragActive, setIsDragActive] = useState(false);
   const [loadedDraftKey, setLoadedDraftKey] = useState<string | null>(null);
@@ -210,7 +229,9 @@ export function FeedComposer({
   const dragDepthRef = useRef(0);
 
   const canSubmit =
-    (text.trim().length > 0 || selectedFiles.length > 0) &&
+    (text.trim().length > 0 ||
+      selectedFiles.length > 0 ||
+      selectedAttachments.length > 0) &&
     !isSubmitting &&
     !isDraftLoading;
 
@@ -234,10 +255,16 @@ export function FeedComposer({
       .then((draft) => {
         if (!isActive) return;
         if (draft) {
-          if (typeof draft.text !== "string" || !Array.isArray(draft.files)) {
+          if (
+            typeof draft.text !== "string" ||
+            !Array.isArray(draft.files) ||
+            (draft.attachments !== undefined &&
+              !Array.isArray(draft.attachments))
+          ) {
             throw new Error("Сохраненный черновик имеет неверный формат");
           }
           setText(draft.text);
+          setSelectedAttachments(draft.attachments ?? []);
           setSelectedFiles(
             draft.files.map(
               (file) =>
@@ -250,6 +277,7 @@ export function FeedComposer({
         } else {
           setText("");
           setSelectedFiles([]);
+          setSelectedAttachments([]);
         }
         setFailedDraftKey(null);
         setLoadedDraftKey(draftKey);
@@ -258,6 +286,7 @@ export function FeedComposer({
         if (!isActive) return;
         setText("");
         setSelectedFiles([]);
+        setSelectedAttachments([]);
         setFailedDraftKey(draftKey);
         onErrorRef.current("Не удалось загрузить сохраненный черновик.");
       });
@@ -270,10 +299,15 @@ export function FeedComposer({
   useEffect(() => {
     if (!draftKey || loadedDraftKey !== draftKey) return;
 
-    void queueFeedDraftWrite(draftKey, text, selectedFiles).catch(() => {
+    void queueFeedDraftWrite(
+      draftKey,
+      text,
+      selectedFiles,
+      selectedAttachments,
+    ).catch(() => {
       onErrorRef.current("Не удалось сохранить черновик на этом устройстве.");
     });
-  }, [draftKey, loadedDraftKey, text, selectedFiles]);
+  }, [draftKey, loadedDraftKey, text, selectedFiles, selectedAttachments]);
 
   useEffect(() => {
     function handleGlobalKeyDown(event: KeyboardEvent) {
@@ -326,13 +360,19 @@ export function FeedComposer({
   async function handleSubmit(event?: React.FormEvent) {
     event?.preventDefault();
     if (isSubmitting || isDraftLoading) return;
-    if (!text.trim() && selectedFiles.length === 0) return;
+    if (
+      !text.trim() &&
+      selectedFiles.length === 0 &&
+      selectedAttachments.length === 0
+    )
+      return;
 
     setIsSubmitting(true);
     try {
-      await onSubmit(text, selectedFiles);
+      await onSubmit(text, selectedFiles, selectedAttachments);
       setText("");
       setSelectedFiles([]);
+      setSelectedAttachments([]);
       window.scrollTo(0, 0);
     } catch (error: any) {
       if (error.response?.status === 401) {
@@ -380,6 +420,16 @@ export function FeedComposer({
             addFiles(Array.from(event.dataTransfer.files));
           }}
         >
+          <AttachmentSelection
+            selected={selectedAttachments}
+            disabled={isSubmitting}
+            onRemove={(attachment) =>
+              setSelectedAttachments((current) =>
+                current.filter((item) => item !== attachment),
+              )
+            }
+          />
+
           {selectedFiles.length > 0 && (
             <ul className="composer-previews" aria-label="Вложения">
               {selectedFiles.map((file, index) => (
@@ -429,6 +479,12 @@ export function FeedComposer({
 
           <div className="composer-footer">
             <div className="composer-tools">
+              <AttachmentPicker
+                selected={selectedAttachments}
+                disabled={isDraftLoading || isSubmitting}
+                onChange={setSelectedAttachments}
+              />
+
               <label className="composer-tool" title="Прикрепить файлы">
                 <svg
                   className="icon"

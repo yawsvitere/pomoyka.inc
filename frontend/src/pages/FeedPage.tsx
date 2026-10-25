@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { HubConnectionBuilder, LogLevel } from "@microsoft/signalr";
 import * as postsApi from "../api/posts";
-import type { Comment, FeedPoll, Post } from "../api/types";
+import type { Comment, FeedPoll, Post, PostAttachment } from "../api/types";
 import { useAuth } from "../context/AuthContext";
 import { FeedComposer } from "../components/feed/FeedComposer";
 import { useToast } from "../components/ui/useToast";
@@ -381,8 +381,15 @@ export function FeedPage() {
     [loadFeed],
   );
 
-  async function handlePostSubmit(text: string, selectedFiles: File[]) {
-    const newPost = await postsApi.createPost(text);
+  async function handlePostSubmit(
+    text: string,
+    selectedFiles: File[],
+    attachments: PostAttachment[],
+  ) {
+    const newPost = await postsApi.createPost(
+      text,
+      attachments.map(({ type, id, fileKind }) => ({ type, id, fileKind })),
+    );
     let postForFeed = newPost;
     if (selectedFiles.length > 0) {
       await Promise.all(

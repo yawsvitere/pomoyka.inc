@@ -1,0 +1,964 @@
+[data-type="post"] {
+  --tone: #7aa2ff;
+}
+[data-type="user"] {
+  --tone: #5fd0a0;
+}
+[data-type="date"] {
+  --tone: #f0b35c;
+}
+[data-type="file"] {
+  --tone: #b392f5;
+}
+
+.attachment-picker {
+  position: relative;
+  display: inline-flex;
+}
+
+.attachment-picker-trigger {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 13px 0 11px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--color-text-dim);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.attachment-picker-trigger:hover:not(:disabled) {
+  border-color: var(--color-border-subtle);
+  background: rgba(232, 232, 232, 0.06);
+  color: var(--color-text);
+}
+
+.attachment-picker-trigger:active:not(:disabled) {
+  background: rgba(232, 232, 232, 0.1);
+}
+
+.attachment-picker-trigger:focus-visible,
+.attachment-picker-selected button:focus-visible,
+.attachment-picker-modal button:focus-visible,
+.attachment-picker-search input:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.attachment-picker-trigger:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.attachment-picker-trigger svg {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 auto;
+}
+
+.attachment-picker-count {
+  display: grid;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  place-items: center;
+  border-radius: var(--radius-pill);
+  background: var(--color-text);
+  color: var(--color-bg);
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.attachment-picker-selected {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  margin: 0;
+  padding: 10px 12px 2px;
+  list-style: none;
+  scrollbar-width: none;
+}
+
+.attachment-picker-selected::-webkit-scrollbar {
+  display: none;
+}
+
+.attachment-picker-chip {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  max-width: 230px;
+  min-height: 36px;
+  padding: 3px 5px 3px 3px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  font-size: 12.5px;
+  font-weight: 500;
+  transition: border-color 0.15s ease;
+}
+
+.attachment-picker-chip:hover {
+  border-color: var(--color-border-strong);
+}
+
+.attachment-picker-chip .attachment-picker-preview {
+  width: 28px;
+  height: 28px;
+  border-radius: calc(var(--radius-md) - 3px);
+}
+
+.attachment-picker-chip .attachment-picker-preview svg {
+  width: 15px;
+  height: 15px;
+}
+
+.attachment-picker-chip-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachment-picker-selected button {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  padding: 4px;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.attachment-picker-selected button:hover:not(:disabled) {
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+}
+
+.attachment-picker-selected button:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.attachment-picker-selected button svg {
+  width: 13px;
+  height: 13px;
+}
+
+.attachment-picker-preview {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+  overflow: hidden;
+  place-items: center;
+  border: 1px solid
+    color-mix(
+      in srgb,
+      var(--tone, var(--color-text-secondary)) 28%,
+      transparent
+    );
+  border-radius: var(--radius-md);
+  background: color-mix(
+    in srgb,
+    var(--tone, var(--color-text-secondary)) 13%,
+    var(--color-surface)
+  );
+  color: var(--tone, var(--color-text-secondary));
+}
+
+.attachment-picker-preview svg {
+  width: 19px;
+  height: 19px;
+}
+
+.attachment-picker-preview[data-type="user"] {
+  border-radius: 50%;
+}
+
+.attachment-picker-preview img,
+.attachment-picker-preview video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.attachment-picker-backdrop {
+  position: fixed;
+  z-index: 1000;
+  inset: 0;
+  display: grid;
+  padding: 24px;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.62);
+  backdrop-filter: blur(8px);
+  animation: attachment-picker-fade 0.16s ease-out both;
+}
+
+.attachment-picker-modal {
+  display: grid;
+  grid-template-rows: auto auto auto minmax(120px, 1fr) auto;
+  width: min(100%, 960px);
+  height: min(820px, calc(100dvh - 48px));
+  max-height: min(820px, calc(100dvh - 48px));
+  overflow: hidden;
+  border-radius: calc(var(--radius-lg) + 2px);
+  background: var(--color-surface-deep);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.03) inset,
+    0 32px 90px var(--color-shadow);
+  color: var(--color-text);
+  animation: attachment-picker-rise 0.22s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.attachment-picker-header {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 10px 16px;
+}
+
+.attachment-picker-close {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  padding: 8px;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.attachment-picker-close:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+}
+
+.attachment-picker-close svg {
+  width: 18px;
+  height: 18px;
+}
+
+.attachment-picker-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 46px;
+  margin: 0 20px;
+  padding: 0 8px 0 14px;
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+  color: var(--color-text-muted);
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.attachment-picker-search:focus-within {
+  border-color: var(--color-text-subtle);
+  box-shadow: 0 0 0 3px rgba(232, 232, 232, 0.06);
+  color: var(--color-text-secondary);
+}
+
+.attachment-picker-search > svg {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+}
+
+.attachment-picker-search input {
+  width: 100%;
+  min-width: 0;
+  padding: 12px 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  font-size: 14px;
+}
+
+.attachment-picker-search input:focus-visible {
+  outline: 0;
+}
+
+.attachment-picker-search input::placeholder {
+  color: var(--color-text-subtle);
+}
+
+.attachment-picker-search button {
+  flex: 0 0 auto;
+  padding: 5px 9px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.attachment-picker-search button:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+}
+
+.attachment-picker-filters {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 14px 20px 12px;
+  scrollbar-width: none;
+}
+
+.attachment-picker-filters::-webkit-scrollbar {
+  display: none;
+}
+
+.attachment-picker-filters button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 30px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.attachment-picker-filters button:hover {
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.attachment-picker-filters button.is-active {
+  border-color: var(--color-border-strong);
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+}
+
+.attachment-picker-filter-count {
+  color: var(--color-text-subtle);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.attachment-picker-filters button.is-active .attachment-picker-filter-count {
+  color: var(--color-text-muted);
+}
+
+.attachment-picker-results {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 12px 10px;
+  border-top: 1px solid var(--color-border-subtle);
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-strong) transparent;
+}
+
+.attachment-picker-results > .attachment-picker-result:first-child {
+  margin-top: 8px;
+}
+
+.attachment-picker-result {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 2px;
+  padding: 8px 12px 8px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease;
+}
+
+.attachment-picker-result:hover:not(:disabled),
+.attachment-picker-result.is-focused:not(:disabled) {
+  background: var(--color-surface);
+}
+
+.attachment-picker-result.is-focused:not(:disabled) {
+  border-color: var(--color-border-subtle);
+}
+
+.attachment-picker-result.is-selected {
+  border-color: var(--color-border);
+  background: var(--color-surface);
+}
+
+.attachment-picker-result:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.attachment-picker-result-copy {
+  display: grid;
+  min-width: 0;
+  flex: 1 1 auto;
+  gap: 5px;
+}
+
+.attachment-picker-result-copy strong {
+  overflow: hidden;
+  color: var(--color-text);
+  font-size: 13.5px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachment-picker-result-copy small {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+.attachment-picker-tag {
+  flex: 0 0 auto;
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  background: color-mix(
+    in srgb,
+    var(--tone, var(--color-text-secondary)) 14%,
+    transparent
+  );
+  color: var(--tone, var(--color-text-secondary));
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+/* Round "checkbox" on the right */
+.attachment-picker-result-action {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1.5px solid var(--color-border-strong);
+  border-radius: 50%;
+  color: transparent;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease,
+    transform 0.15s ease;
+}
+
+.attachment-picker-result-action svg {
+  width: 12px;
+  height: 12px;
+}
+
+.attachment-picker-result:hover:not(:disabled) .attachment-picker-result-action,
+.attachment-picker-result.is-focused:not(:disabled)
+  .attachment-picker-result-action {
+  border-color: var(--color-text-muted);
+}
+
+.attachment-picker-result.is-selected .attachment-picker-result-action {
+  border-color: var(--color-text);
+  background: var(--color-text);
+  color: var(--color-bg);
+  transform: scale(1.04);
+}
+
+.attachment-picker-state {
+  display: flex;
+  min-height: 100%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.attachment-picker-state strong {
+  color: var(--color-text);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.attachment-picker-state-text {
+  max-width: 320px;
+}
+
+.attachment-picker-state-text code {
+  padding: 1px 6px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 6px;
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+
+.attachment-picker-state-icon {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  margin-bottom: 4px;
+  place-items: center;
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+}
+
+.attachment-picker-state-icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.attachment-picker-error .attachment-picker-state-icon {
+  border-color: color-mix(in srgb, var(--color-danger) 35%, transparent);
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+}
+
+.attachment-picker-error strong {
+  color: var(--color-danger);
+}
+
+.attachment-picker-hints {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  width: min(100%, 340px);
+  margin: 4px 0 6px;
+  padding: 0;
+  list-style: none;
+}
+
+.attachment-picker-hints li {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 10px 7px 7px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  font-size: 12.5px;
+  font-weight: 500;
+  text-align: left;
+}
+
+.attachment-picker-hint-icon {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: calc(var(--radius-md) - 3px);
+  background: color-mix(
+    in srgb,
+    var(--tone, var(--color-text-secondary)) 15%,
+    transparent
+  );
+  color: var(--tone, var(--color-text-secondary));
+}
+
+.attachment-picker-hint-icon svg {
+  width: 15px;
+  height: 15px;
+}
+
+.attachment-picker-skeletons {
+  display: grid;
+  gap: 2px;
+  padding-top: 8px;
+}
+
+.attachment-picker-skeleton {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px;
+}
+
+.attachment-picker-skeleton > span {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+  border-radius: var(--radius-md);
+}
+
+.attachment-picker-skeleton > div {
+  display: grid;
+  flex: 1 1 auto;
+  gap: 8px;
+}
+
+.attachment-picker-skeleton > div > span {
+  height: 10px;
+  border-radius: var(--radius-pill);
+}
+
+.attachment-picker-skeleton > div > span:first-child {
+  width: 55%;
+}
+
+.attachment-picker-skeleton > div > span:last-child {
+  width: 28%;
+  height: 8px;
+}
+
+.attachment-picker-skeleton span {
+  background: linear-gradient(
+    90deg,
+    var(--color-surface) 0%,
+    var(--color-surface-raised) 50%,
+    var(--color-surface) 100%
+  );
+  background-size: 200% 100%;
+  animation: attachment-picker-shimmer 1.3s ease-in-out infinite;
+}
+
+.attachment-picker-footer {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--color-border-subtle);
+  background: color-mix(
+    in srgb,
+    var(--color-bg) 40%,
+    var(--color-surface-deep)
+  );
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.attachment-picker-meter {
+  display: grid;
+  gap: 6px;
+  min-width: 96px;
+}
+
+.attachment-picker-meter b {
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.attachment-picker-meter i {
+  display: block;
+  height: 3px;
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+  background: var(--color-border-subtle);
+}
+
+.attachment-picker-meter em {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-text);
+  transition: width 0.25s ease;
+}
+
+.attachment-picker-shortcuts {
+  display: inline-flex;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px;
+  color: var(--color-text-subtle);
+  font-size: 11.5px;
+}
+
+.attachment-picker-shortcuts kbd {
+  min-width: 20px;
+  padding: 1px 5px;
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: 10.5px;
+  text-align: center;
+}
+
+.attachment-picker-shortcuts kbd:not(:first-child) {
+  margin-left: 2px;
+}
+
+.attachment-picker-footer button {
+  min-height: 36px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--color-text);
+  color: var(--color-bg);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    transform 0.1s ease;
+}
+
+.attachment-picker-footer button:hover {
+  background: var(--color-text-secondary);
+}
+
+.attachment-picker-footer button:active {
+  transform: scale(0.97);
+}
+
+.post-attachments {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.post-attachment-card {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 11px;
+  padding: 8px 12px 8px 8px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-deep);
+  color: inherit;
+  text-decoration: none;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+
+.post-attachment-card:hover {
+  border-color: var(--color-border-strong);
+  background: var(--color-surface);
+}
+
+.post-attachment-card:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.post-attachment-copy {
+  display: grid;
+  min-width: 0;
+  flex: 1 1 auto;
+  gap: 3px;
+}
+
+.post-attachment-copy strong {
+  overflow: hidden;
+  color: var(--color-text);
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.post-attachment-copy small {
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.post-attachment-arrow {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  color: var(--color-text-subtle);
+  transition:
+    color 0.15s ease,
+    transform 0.15s ease;
+}
+
+.post-attachment-arrow svg {
+  width: 16px;
+  height: 16px;
+}
+
+.post-attachment-card:hover .post-attachment-arrow {
+  color: var(--color-text);
+  transform: translate(1px, -1px);
+}
+
+@keyframes attachment-picker-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes attachment-picker-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes attachment-picker-shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@media (max-width: 700px) {
+  .attachment-picker-trigger {
+    width: 36px;
+    height: 36px;
+    min-height: 36px;
+    padding: 0;
+    border-color: var(--color-border-subtle);
+  }
+
+  .attachment-picker-trigger > span:not(.attachment-picker-count) {
+    display: none;
+  }
+
+  .attachment-picker-count {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    border: 1px solid var(--color-surface-deep);
+    font-size: 10px;
+  }
+
+  .attachment-picker-backdrop {
+    padding: 0;
+    place-items: end center;
+  }
+
+  .attachment-picker-modal {
+    width: 100%;
+    height: min(720px, calc(100dvh - 24px));
+    max-height: min(720px, calc(100dvh - 24px));
+    border-bottom: 0;
+    border-radius: calc(var(--radius-lg) + 4px) calc(var(--radius-lg) + 4px) 0 0;
+    animation-name: attachment-picker-sheet;
+  }
+
+  .attachment-picker-header {
+    padding: 10px 14px;
+  }
+
+  .attachment-picker-search {
+    margin: 0 16px;
+  }
+
+  .attachment-picker-filters {
+    padding: 13px 16px 10px;
+  }
+
+  .attachment-picker-footer {
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .attachment-picker-shortcuts {
+    display: none;
+  }
+
+  .attachment-picker-meter {
+    flex: 1 1 auto;
+  }
+
+  .attachment-picker-result {
+    padding: 9px 10px 9px 8px;
+  }
+}
+
+@keyframes attachment-picker-sheet {
+  from {
+    transform: translateY(40px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .attachment-picker-backdrop,
+  .attachment-picker-modal,
+  .attachment-picker-skeleton span {
+    animation: none;
+  }
+
+  .attachment-picker-trigger,
+  .attachment-picker-result,
+  .attachment-picker-result-action,
+  .attachment-picker-meter em,
+  .post-attachment-card,
+  .post-attachment-arrow {
+    transition: none;
+  }
+}

@@ -1,6 +1,8 @@
 using System.Globalization;
 using Feed.Api.Data;
+using Feed.Api.Models;
 using Feed.Api.Models.Dto;
+using Feed.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -13,10 +15,12 @@ namespace Feed.Api.Controllers;
 public class SearchController : ControllerBase
 {
     private readonly AppDbContext _db;
+    private readonly IStorageService _storage;
 
-    public SearchController(AppDbContext db)
+    public SearchController(AppDbContext db, IStorageService storage)
     {
         _db = db;
+        _storage = storage;
     }
 
     [HttpGet]
@@ -44,10 +48,17 @@ public class SearchController : ControllerBase
 
         var userFiles = await _db.UserFiles
             .AsNoTracking()
-            .Where(file => EF.Functions.ILike(file.FileName, pattern))
+            .Where(file => file.AccessLevel != FileAccessLevel.Private &&
+                           EF.Functions.ILike(file.FileName, pattern))
             .OrderByDescending(file => file.UploadedAt)
             .Take(8)
-            .Select(file => new SearchFileDto(file.Id, file.FileName, "user"))
+            .Select(file => new
+            {
+                file.Id,
+                file.FileName,
+                file.StorageKey,
+                file.ContentType
+            })
             .ToListAsync();
 
         var postFiles = await _db.PostFiles
@@ -55,8 +66,21 @@ public class SearchController : ControllerBase
             .Where(file => EF.Functions.ILike(file.FileName, pattern))
             .OrderByDescending(file => file.UploadedAt)
             .Take(8)
-            .Select(file => new SearchFileDto(file.Id, file.FileName, "post"))
+            .Select(file => new
+            {
+                file.Id,
+                file.FileName,
+                file.StorageKey,
+                file.ContentType
+            })
             .ToListAsync();
+
+        var files = userFiles
+            .Select(file => ToSearchFile(file.Id, file.FileName, file.StorageKey, file.ContentType, "user"))
+            .Concat(postFiles.Select(file =>
+                ToSearchFile(file.Id, file.FileName, file.StorageKey, file.ContentType, "post")))
+            .Take(8)
+            .ToList();
 
         var posts = await _db.Posts
             .AsNoTracking()
@@ -74,10 +98,25 @@ public class SearchController : ControllerBase
         return Ok(new SearchResponseDto
         {
             Users = users,
-            Files = userFiles.Concat(postFiles).Take(8).ToList(),
+            Files = files,
             Dates = dates,
             Posts = posts
         });
+    }
+
+    private SearchFileDto ToSearchFile(
+        Guid id,
+        string fileName,
+        string storageKey,
+        string contentType,
+        string kind)
+    {
+        var isPreviewable = contentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase) ||
+                            contentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase);
+        var previewUrl = isPreviewable
+            ? _storage.GetPublicObjectUrl(_storage.GetIconPreviewObjectKey(storageKey))
+            : null;
+        return new SearchFileDto(id, fileName, kind, previewUrl);
     }
 
     private async Task<List<SearchDateDto>> FindDatesAsync(string term)

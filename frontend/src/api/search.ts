@@ -10,6 +10,7 @@ export interface SearchFile {
   id: string;
   fileName: string;
   kind: "user" | "post";
+  previewUrl: string | null;
 }
 
 export interface SearchDate {

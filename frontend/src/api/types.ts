@@ -28,6 +28,23 @@ export interface PostFile {
   previewUrl: string;
 }
 
+export type PostAttachmentType = "post" | "user" | "date" | "file";
+
+export interface PostAttachment {
+  id: string;
+  type: PostAttachmentType;
+  title: string;
+  subtitle: string | null;
+  href: string;
+  imageUrl: string | null;
+  fileKind?: "user" | "post" | null;
+}
+
+export type CreatePostAttachment = Pick<
+  PostAttachment,
+  "type" | "id" | "fileKind"
+>;
+
 export interface Post {
   id: string;
   text: string | null;
@@ -40,6 +57,7 @@ export interface Post {
   accessLevel?: 1 | 2;
   relatedPostId?: string | null;
   blocks: PostBlock[];
+  attachments: PostAttachment[];
   createdAt: string;
   author: User;
   files: PostFile[];
