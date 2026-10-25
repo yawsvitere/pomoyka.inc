@@ -1533,18 +1533,21 @@ public class FilesController : ControllerBase
             postFile.ContentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase))
             _imagePreviewBackgroundService.Enqueue(storageKey, postFile.ContentType);
 
+        var isImage = postFile.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase);
         var dto = new PostFileDto
         {
             Id = postFile.Id,
             FileName = postFile.FileName,
             ContentType = postFile.ContentType,
             SizeBytes = postFile.SizeBytes,
-            DownloadUrl = $"{Request.Scheme}://{Request.Host}/api/files/post/{postFile.Id}/download",
-            PreviewUrl = postFile.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)
+            DownloadUrl = isImage
+                ? _storage.GetPublicObjectUrl(postFile.StorageKey)
+                : $"{Request.Scheme}://{Request.Host}/api/files/post/{postFile.Id}/download",
+            PreviewUrl = isImage
                 ? _storage.GetPublicObjectUrl(_storage.GetFeedPreviewObjectKey(postFile.StorageKey))
                 : postFile.ContentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase)
                     ? _storage.GetPublicObjectUrl(_storage.GetVideoPreviewObjectKey(postFile.StorageKey))
-                : string.Empty
+                    : string.Empty
         };
 
         await _feedHub.Clients.Group("feed-global").SendAsync("PostFileAdded", postId, dto);

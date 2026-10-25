@@ -1,6 +1,13 @@
 import react from "@vitejs/plugin-react";
 import { defineConfig, type Plugin } from "vite";
 
+const backendProxyTarget =
+  process.env.VITE_BACKEND_PROXY_TARGET ?? "http://127.0.0.1:5000";
+const storageProxyTarget =
+  process.env.VITE_STORAGE_PROXY_TARGET ?? "http://127.0.0.1:9000";
+const imgproxyProxyTarget =
+  process.env.VITE_IMGPROXY_PROXY_TARGET ?? "http://127.0.0.1:8081";
+
 const socialPreviewAgents =
   /TelegramBot|facebookexternalhit|Facebot|Twitterbot|WhatsApp|Slackbot|Discordbot|LinkedInBot|vkShare|Viber|SkypeUriPreview/i;
 
@@ -55,36 +62,36 @@ export default defineConfig({
 
     proxy: {
       "/api": {
-        target: "http://127.0.0.1:5000",
+        target: backendProxyTarget,
         changeOrigin: true,
       },
 
       "/og": {
-        target: "http://127.0.0.1:5000",
+        target: backendProxyTarget,
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/og/, "/api/posts/og"),
       },
 
       "/gallery-og": {
-        target: "http://127.0.0.1:5000",
+        target: backendProxyTarget,
         changeOrigin: true,
         rewrite: (path) =>
           path.replace(/^\/gallery-og/, "/api/files/gallery/og"),
       },
 
       "/hubs": {
-        target: "http://127.0.0.1:5000",
+        target: backendProxyTarget,
         changeOrigin: true,
         ws: true,
       },
 
       "/feed-files": {
-        target: "http://127.0.0.1:9000",
+        target: storageProxyTarget,
         changeOrigin: true,
       },
 
       "/imgproxy": {
-        target: "http://127.0.0.1:8081",
+        target: imgproxyProxyTarget,
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/imgproxy/, ""),
       },

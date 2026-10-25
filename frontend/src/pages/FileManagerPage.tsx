@@ -4,6 +4,7 @@ import { PhotoSlider } from "react-photo-view";
 import * as filesApi from "../api/files";
 import { ContextMenu } from "../components/feed/ContextMenu";
 import { AlertDialog } from "../components/ui/AlertDialog";
+import { AvatarMedia } from "../components/ui/AvatarMedia";
 import { MediaModal } from "../components/ui/MediaModal";
 import { useToast } from "../components/ui/useToast";
 import checkIcon from "../assets/icons/check.svg";
@@ -1877,10 +1878,9 @@ export function FileManagerPage({ shared = false }: { shared?: boolean }) {
                                 <>
                                   <span className="fm-author-avatar">
                                     {file.author.avatarUrl ? (
-                                      <img
+                                      <AvatarMedia
                                         src={getBrowserFileUrl(file.author.avatarUrl)}
                                         alt=""
-                                        loading="lazy"
                                       />
                                     ) : (
                                       userInitials(file.author.displayName)

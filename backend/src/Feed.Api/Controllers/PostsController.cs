@@ -1079,29 +1079,43 @@ public class PostsController : ControllerBase
         }
     };
 
-    private PostFileDto ToFileDto(PostFile file) => new()
+    private PostFileDto ToFileDto(PostFile file)
     {
-        Id = file.Id,
-        FileName = file.FileName,
-        ContentType = file.ContentType,
-        SizeBytes = file.SizeBytes,
-        DownloadUrl = $"{Request.Scheme}://{Request.Host}/api/files/post/{file.Id}/download",
-        PreviewUrl = file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)
-            ? _storage.GetPublicObjectUrl(_storage.GetFeedPreviewObjectKey(file.StorageKey))
-            : file.ContentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase)
-                ? _storage.GetPublicObjectUrl(_storage.GetVideoPreviewObjectKey(file.StorageKey))
-            : string.Empty
-    };
+        var isImage = file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase);
+        return new PostFileDto
+        {
+            Id = file.Id,
+            FileName = file.FileName,
+            ContentType = file.ContentType,
+            SizeBytes = file.SizeBytes,
+            DownloadUrl = isImage
+                ? _storage.GetPublicObjectUrl(file.StorageKey)
+                : $"{Request.Scheme}://{Request.Host}/api/files/post/{file.Id}/download",
+            PreviewUrl = isImage
+                ? _storage.GetPublicObjectUrl(_storage.GetFeedPreviewObjectKey(file.StorageKey))
+                : file.ContentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase)
+                    ? _storage.GetPublicObjectUrl(_storage.GetVideoPreviewObjectKey(file.StorageKey))
+                    : string.Empty
+        };
+    }
 
-    private PostFileDto ToCommentFileDto(CommentFile file) => new()
+    private PostFileDto ToCommentFileDto(CommentFile file)
     {
-        Id = file.Id,
-        FileName = file.FileName,
-        ContentType = file.ContentType,
-        SizeBytes = file.SizeBytes,
-        DownloadUrl = $"{Request.Scheme}://{Request.Host}/api/files/comment/{file.Id}/download",
-        PreviewUrl = _storage.GetPublicObjectUrl(_storage.GetPreviewObjectKey(file.StorageKey))
-    };
+        var isImage = file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase);
+        return new PostFileDto
+        {
+            Id = file.Id,
+            FileName = file.FileName,
+            ContentType = file.ContentType,
+            SizeBytes = file.SizeBytes,
+            DownloadUrl = isImage
+                ? _storage.GetPublicObjectUrl(file.StorageKey)
+                : $"{Request.Scheme}://{Request.Host}/api/files/comment/{file.Id}/download",
+            PreviewUrl = isImage
+                ? _storage.GetPublicObjectUrl(_storage.GetPreviewObjectKey(file.StorageKey))
+                : string.Empty
+        };
+    }
 
     private IQueryable<Post> QueryPost(Guid id) => _db.Posts
         .AsNoTracking()

@@ -148,14 +148,22 @@ public class CommentsController : ControllerBase
             NicknameColor = string.IsNullOrWhiteSpace(comment.Author.NicknameColor) ? "#4f46e5" : comment.Author.NicknameColor,
             AvatarUrl = comment.Author.AvatarUrl == null ? null : $"/api/files/avatar/{comment.Author.Id}?v={Uri.EscapeDataString(comment.Author.AvatarUrl)}"
         },
-        Files = comment.Files.Select(file => new PostFileDto
+        Files = comment.Files.Select(file =>
         {
-            Id = file.Id,
-            FileName = file.FileName,
-            ContentType = file.ContentType,
-            SizeBytes = file.SizeBytes,
-            DownloadUrl = $"{Request.Scheme}://{Request.Host}/api/files/comment/{file.Id}/download",
-            PreviewUrl = _storage.GetPublicObjectUrl(_storage.GetPreviewObjectKey(file.StorageKey))
+            var isImage = file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase);
+            return new PostFileDto
+            {
+                Id = file.Id,
+                FileName = file.FileName,
+                ContentType = file.ContentType,
+                SizeBytes = file.SizeBytes,
+                DownloadUrl = isImage
+                    ? _storage.GetPublicObjectUrl(file.StorageKey)
+                    : $"{Request.Scheme}://{Request.Host}/api/files/comment/{file.Id}/download",
+                PreviewUrl = isImage
+                    ? _storage.GetPublicObjectUrl(_storage.GetPreviewObjectKey(file.StorageKey))
+                    : string.Empty
+            };
         }).ToList(),
         ReactionCounts = ReadReactions(comment.ReactionData)
             .GroupBy(reaction => reaction.Emoji)

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import * as filesApi from "../api/files";
 import { DateRangePicker } from "../components/common/DateRangePicker";
 import { InfiniteScroll } from "../components/ui/InfiniteScroll";
+import { AvatarMedia } from "../components/ui/AvatarMedia";
 import { Pinterest } from "../components/ui/Pinterest";
 import { Spinner } from "../components/ui/Spinner";
 import { useToast } from "../components/ui/useToast";
@@ -62,7 +63,7 @@ function PinterestFilterSelect({
         onClick={() => setIsOpen((open) => !open)}
       >
         {selectedOption?.avatarUrl ? (
-          <img
+          <AvatarMedia
             className="pinterest-select__avatar"
             src={getBrowserFileUrl(selectedOption.avatarUrl)}
             alt=""
@@ -108,7 +109,7 @@ function PinterestFilterSelect({
               }}
             >
               {option.avatarUrl ? (
-                <img
+                <AvatarMedia
                   className="pinterest-select__avatar"
                   src={getBrowserFileUrl(option.avatarUrl)}
                   alt=""

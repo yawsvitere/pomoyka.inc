@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { RefObject, SyntheticEvent } from "react";
 import { PhotoProvider, PhotoView } from "react-photo-view";
 import { Spinner } from "./Spinner";
+import { AvatarMedia } from "./AvatarMedia";
 import { MediaModal } from "./MediaModal";
 import { AlertDialog } from "./AlertDialog";
 import { ContextMenu } from "../feed/ContextMenu";
@@ -363,7 +364,7 @@ function PinterestCard({
               {image.author && (
                 <div className="pinterest-card-author">
                   {image.author.avatarUrl ? (
-                    <img
+                    <AvatarMedia
                       className="pinterest-card-author__avatar"
                       src={getBrowserFileUrl(image.author.avatarUrl)}
                       alt=""

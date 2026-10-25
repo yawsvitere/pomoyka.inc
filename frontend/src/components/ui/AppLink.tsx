@@ -7,12 +7,12 @@ import {
   type To,
 } from "react-router-dom";
 
-type AppLinkClassName =
-  | string
-  | ((options: { isActive: boolean }) => string);
+type AppLinkClassName = string | ((options: { isActive: boolean }) => string);
 
-interface AppLinkProps
-  extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "className"> {
+interface AppLinkProps extends Omit<
+  ButtonHTMLAttributes<HTMLButtonElement>,
+  "className"
+> {
   to: To;
   className?: AppLinkClassName;
   end?: boolean;
@@ -34,8 +34,7 @@ export function AppLink({
   const navigate = useNavigate();
   const href = useHref(to);
   const resolvedPath = useResolvedPath(to);
-  const isActive =
-    useMatch({ path: resolvedPath.pathname, end }) !== null;
+  const isActive = useMatch({ path: resolvedPath.pathname, end }) !== null;
   const resolvedClassName =
     typeof className === "function" ? className({ isActive }) : className;
 
@@ -69,8 +68,10 @@ export function AppLink({
   );
 }
 
-interface AppExternalLinkProps
-  extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "className"> {
+interface AppExternalLinkProps extends Omit<
+  ButtonHTMLAttributes<HTMLButtonElement>,
+  "className"
+> {
   href: string;
   className?: string;
 }

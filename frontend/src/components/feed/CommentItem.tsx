@@ -74,7 +74,9 @@ export function CommentItem({ comment, onReaction }: CommentItemProps) {
             data-count={Math.min(imageFiles.length, 6)}
           >
             {imageFiles.map((file) => {
-              const imageUrl = getBrowserFileUrl(file.downloadUrl);
+              const imageUrl = getBrowserFileUrl(
+                file.previewUrl || file.downloadUrl,
+              );
               return (
                 <PhotoView key={file.id} src={imageUrl}>
                   <img

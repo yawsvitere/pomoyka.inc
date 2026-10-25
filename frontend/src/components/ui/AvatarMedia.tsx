@@ -8,9 +8,11 @@ type AvatarMediaProps = {
 
 function isVideoAvatar(src: string) {
   try {
-    return decodeURIComponent(src).includes("avatar-video/");
+    const url = new URL(src, window.location.origin);
+    const storageKey = url.searchParams.get("v") ?? url.pathname;
+    return decodeURIComponent(storageKey).startsWith("avatar-video/");
   } catch {
-    return src.includes("avatar-video/");
+    return /avatar-video(?:\/|%2f)/i.test(src);
   }
 }
 

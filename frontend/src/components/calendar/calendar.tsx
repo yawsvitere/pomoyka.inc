@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { Spinner } from "../ui/Spinner";
+import { AvatarMedia } from "../ui/AvatarMedia";
 import "../../styles/pages/calendar.css";
 
 export type CalendarView = "day" | "week" | "month" | "list";
@@ -264,10 +265,9 @@ export function Calendar({
                           title={participant.displayName}
                         >
                           {participant.avatarUrl ? (
-                            <img
+                            <AvatarMedia
                               src={participant.avatarUrl}
                               alt=""
-                              loading="lazy"
                             />
                           ) : (
                             participant.displayName.slice(0, 1).toUpperCase()
@@ -431,11 +431,10 @@ export function Calendar({
                                 aria-label={item.author}
                               >
                                 {item.avatarUrl ? (
-                                  <img
+                                  <AvatarMedia
                                     className="calendar-popover-avatar"
                                     src={item.avatarUrl}
                                     alt=""
-                                    loading="lazy"
                                   />
                                 ) : (
                                   <span

@@ -27,7 +27,9 @@ function getCoverUrl(post: Post) {
     post.blocks.find((block) => block.type === "image" && block.file)?.file ||
     post.files.find((file) => file.contentType.startsWith("image/"));
 
-  return image ? getBrowserFileUrl(image.downloadUrl) : null;
+  return image
+    ? getBrowserFileUrl(image.previewUrl || image.downloadUrl)
+    : null;
 }
 
 function getInitials(displayName: string) {
