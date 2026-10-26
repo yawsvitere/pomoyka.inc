@@ -25,19 +25,26 @@
 
 ## Установка на Linux-сервере
 
-Установите Docker Engine и Docker Compose Plugin, затем выполните:
+Выполните одну команду от пользователя с `sudo`:
 
 ```bash
-git clone https://github.com/yawsvitere/pomoyka.inc
-cd pomoyka.inc
-chmod +x install.sh
-./install.sh
+curl -fsSL https://raw.githubusercontent.com/yawsvitere/pomoyka.inc/main/install.sh | sudo bash
 ```
 
-Инсталлер запросит email администратора и публичный адрес S3-хранилища.
-RustFS скачивается из публичного Docker Hub и не требует входа в реестр.
-Учётные данные хранилища, пароли, JWT-ключ и ключ шифрования Data Protection
-генерируются автоматически и записываются в закрытый файл `.env`.
+Установщик при необходимости поставит Docker, скачает только production Compose,
+спросит email администратора и публичный адрес сайта для S3 (например,
+`example.com` за внешним nginx или `203.0.113.10:3000` при прямом доступе),
+затем создаст закрытый `.env` со случайными секретами и запустит приложение на порту `3000`.
+Исходный код на сервер не клонируется, production-образы не собираются.
+
+При первом запуске GitHub Actions публикует frontend и backend в GitHub Container
+Registry (GHCR). Сделайте пакеты `pomoyka-inc-backend` и `pomoyka-inc-frontend`
+публичными в настройках пакетов GitHub, иначе серверу потребуется `docker login ghcr.io`.
+Для обновления повторно выполните команду установщика: существующий `.env` сохранится,
+а образы будут загружены заново.
+
+Единственный опубликованный порт приложения — `3000`; внешний nginx можно направить
+на `http://127.0.0.1:3000`.
 
 ## Ручная установка
 
@@ -51,7 +58,8 @@ docker compose up --build
 ### Production
 
 ```bash
-docker compose -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml pull
+docker compose -f docker-compose.prod.yml up -d
 ```
 
 Для сервера укажи публичный адрес S3-хранилища:
